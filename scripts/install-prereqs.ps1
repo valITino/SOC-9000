@@ -18,6 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Prefer a hard stop on missing winget so we don't spam errors later
+
 $winget = Get-Command winget -ErrorAction SilentlyContinue
 if (-not $winget) {
     Write-Warning "winget is not installed or not in PATH. Skipping prerequisite installation."
