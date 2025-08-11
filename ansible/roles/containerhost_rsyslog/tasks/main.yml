@@ -1,0 +1,32 @@
+---
+- name: Ensure rsyslog installed and enabled
+  become: yes
+  apt:
+    name: rsyslog
+    state: present
+    update_cache: yes
+
+- name: Create pfsense log dir
+  become: yes
+  file:
+    path: /var/log/pfsense
+    state: directory
+    mode: '0755'
+
+- name: Configure rsyslog listener for pfSense on MGMT IP
+  become: yes
+  copy:
+    dest: /etc/rsyslog.d/10-pfsense.conf
+    mode: '0644'
+    content: |
+      module(load="imudp")
+      input(type="imudp" port="514" address="{{ lookup('env','CH_IP_MGMT') | default('172.22.10.10') }}")
+      template(name="PFLine" type="string" string="%msg%\n")
+      if ($fromhost-ip == "{{ lookup('env','PFSENSE_MGMT_IP') | default('172.22.10.1') }}") then {
+        action(type="omfile" file="/var/log/pfsense/pfsense.log" template="PFLine")
+        stop
+      }
+
+- name: Restart rsyslog
+  become: yes
+  service: { name: rsyslog, state: restarted, enabled: yes }

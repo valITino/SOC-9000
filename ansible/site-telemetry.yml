@@ -1,0 +1,14 @@
+---
+- name: pfSense -> remote syslog
+  hosts: pfsense
+  gather_facts: no
+  roles: [ pfsense_syslog ]
+
+- name: ContainerHost rsyslog + wazuh-agent
+  hosts: containerhost
+  become: yes
+  roles: [ containerhost_rsyslog, containerhost_wazuh_agent ]
+
+- name: 'Windows victim: wazuh-agent + atomic + caldera'
+  hosts: windows
+  roles: [ windows_wazuh_agent, windows_atomic, windows_caldera ]

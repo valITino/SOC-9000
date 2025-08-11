@@ -1,0 +1,22 @@
+---
+- name: Ensure NuGet provider & PowerShellGet
+  win_shell: |
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+    Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted
+
+- name: Install Invoke-AtomicRedTeam module
+  win_shell: Install-Module -Name Invoke-AtomicRedTeam -Force -Scope AllUsers
+
+- name: Initialize Atomic Red Team (download atomics)
+  win_shell: |
+    Import-Module Invoke-AtomicRedTeam
+    Initialize-AtomicRedTeam
+
+- name: Run a SAFE sample Atomic set (creates & deletes temp files, benign commands)
+  win_shell: |
+    Import-Module Invoke-AtomicRedTeam
+    # Example benign-ish tests; if a test fails due to deps, it will be skipped
+    Invoke-AtomicTest T1059.003 -TestNumbers 1 -Cleanup
+    Invoke-AtomicTest T1112 -TestNumbers 1 -Cleanup
+    Invoke-AtomicTest T1033 -TestNumbers 1 -Cleanup

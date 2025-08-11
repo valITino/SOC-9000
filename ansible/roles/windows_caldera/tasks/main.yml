@@ -1,0 +1,12 @@
+---
+- name: Download CALDERA Sandcat (Windows x64)
+  win_shell: |
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $url = "https://caldera.lab.local/file/download?platform=windows&arch=amd64"
+    Invoke-WebRequest -Uri $url -OutFile C:\\Windows\\Temp\\sandcat.exe -UseBasicParsing
+  args: { executable: powershell.exe }
+
+- name: Run agent (bypass TLS validation; lab cert)
+  win_shell: |
+    Start-Process -FilePath "C:\\Windows\\Temp\\sandcat.exe" -ArgumentList "-server https://caldera.lab.local -group SOC-9000 -v" -WindowStyle Hidden
+  args: { executable: powershell.exe }
