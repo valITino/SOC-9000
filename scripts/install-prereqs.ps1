@@ -14,6 +14,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$winget = Get-Command winget -ErrorAction SilentlyContinue
+if (-not $winget) {
+    Write-Warning "winget is not installed or not in PATH. Skipping prerequisite installation."
+    return
+}
+
 # Check for GNU Make
 $makeCmd = Get-Command make -ErrorAction SilentlyContinue
 if (-not $makeCmd) {
@@ -41,3 +47,4 @@ if (-not $pwshCmd) {
 }
 
 Write-Host "Prerequisite installation complete." -ForegroundColor Green
+

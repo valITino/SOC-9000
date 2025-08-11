@@ -17,7 +17,12 @@ $results = foreach($t in $targets){
     $r = Invoke-WebRequest -Uri $t -Method Head -TimeoutSec 8 -UseBasicParsing
     [pscustomobject]@{ URL=$t; Status=$r.StatusCode; OK=$true }
   } catch {
-    [pscustomobject]@{ URL=$t; Status=($_.Exception.Response.StatusCode.value__ 2>$null); OK=$false }
+    $status = if ($_.Exception.PSObject.Properties['Response']) {
+      $_.Exception.Response.StatusCode.value__
+    } else {
+      $_.Exception.Message
+    }
+    [pscustomobject]@{ URL=$t; Status=$status; OK=$false }
   }
 }
 $results | Format-Table -AutoSize
