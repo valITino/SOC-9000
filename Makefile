@@ -1,23 +1,35 @@
 SHELL := pwsh
 
 help:
-@Write-Host "Targets: init, env, check, up-all, down-all, status"
+	@Write-Host "Targets: init, env, check, up-all, down-all, status"
 
 init:
-@Copy-Item .env.example .env -Force
-@Write-Host "Edit .env before continuing."
+	@Copy-Item .env.example .env -Force
+	@Write-Host "Edit .env before continuing."
 
 env:
-@Get-Content .env | ? {$_ -and $_ -notmatch '^\s*#'}
+	@Get-Content .env | ? {$_ -and $_ -notmatch ^\s*#}
 
 check:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1 -CheckOnly
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1 -CheckOnly
 
 up-all:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-up.ps1
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-up.ps1
 
 down-all:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-down.ps1
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-down.ps1
 
 status:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-status.ps1
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-status.ps1
+
+backup:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/backup-run.ps1
+
+reset:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/reset-lab.ps1
+
+reset-hard:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/reset-lab.ps1 -Hard
+
+smoke:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
