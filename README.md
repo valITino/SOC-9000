@@ -29,7 +29,7 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 - Kali (CLI)
 - Nessus Essentials
 
-## Quickstart
+## Quick Start
 
 ### Clone and initialize
 
