@@ -14,3 +14,6 @@ temp/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Upstream vendored content
+third_party/
