@@ -33,11 +33,7 @@ function Require-Administrator {
         $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal   = New-Object Security.Principal.WindowsPrincipal($currentUser)
         if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-
-            Write-Warning "This installer must be run as Administrator.  Right-click PowerShell and choose 'Run as administrator'."
-
             Write-Warning "This installer must be run as Administrator. Right-click PowerShell and choose 'Run as administrator'."
-
             exit 1
         }
     } else {
@@ -86,24 +82,6 @@ Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Require-Administrator
 Ensure-Git
 
-# Install prerequisites (GNU Make and PowerShell 7) using the helper script.  This
-# ensures that the remainder of this installer can rely on make and pwsh.
-if ($IsWindows) {
-    Try {
-        Write-Host "Checking prerequisites..." -ForegroundColor Cyan
-        Run-PowerShellScript -ScriptPath "scripts/install-prereqs.ps1"
-    } Catch {
-        Write-Warning "Prerequisite installation script failed.  Continuing may result in errors."
-    }
-} else {
-    Write-Warning "Non-Windows host detected; skipping prerequisite installation."
-}
-Ensure-Make
-
-# Ensure the install directory exists and expand both paths to absolute paths
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-
 # Install prerequisites (GNU Make and PowerShell 7)
 if ($IsWindows) {
     try {
@@ -115,7 +93,6 @@ if ($IsWindows) {
     }
 } else {
     Write-Warning "Non-Windows host detected; skipping prerequisite installation."
-
 }
 Ensure-Make
 
@@ -128,26 +105,6 @@ $RepoDir    = [System.IO.Path]::GetFullPath($RepoDir)
 
 Write-Host "Pre‑install directory: $InstallDir" -ForegroundColor Cyan
 Write-Host "Repository directory: $RepoDir"    -ForegroundColor Cyan
-
-
-# Clone or update the repository in RepoDir.  We always clone into RepoDir
-# directly (not into a subfolder) so that the repo root is exactly the
-# specified path.  If the directory already contains the repository, pull
-# updates instead of recloning.
-$gitDir = Join-Path $RepoDir '.git'
-if (Test-Path $gitDir) {
-    Write-Host "SOC-9000 repository already exists.  Pulling latest changes..." -ForegroundColor Green
-    Push-Location $RepoDir
-    git pull --ff-only
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
-    }
-    Pop-Location
-} else {
-    if (Test-Path $RepoDir) {
-        if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
-            Write-Error "Repository directory $RepoDir exists and is not a Git repository."; exit 1
-        }
 
 # Clone or update repository
 $gitDir = Join-Path $RepoDir '.git'
@@ -169,15 +126,10 @@ if (Test-Path $gitDir) {
     if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
         Write-Error "Repository directory $RepoDir exists and is not a Git repository."
         exit 1
-
     }
     Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
     try {
         git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
-
-    } catch {
-        Write-Error "Failed to clone repository: $_"; exit 1
-
         if ($LASTEXITCODE -ne 0) {
             Write-Error "git clone returned exit code $LASTEXITCODE."
             exit 1
@@ -185,7 +137,6 @@ if (Test-Path $gitDir) {
     } catch {
         Write-Error "Failed to clone repository: $_"
         exit 1
-
     }
 }
 
@@ -229,13 +180,6 @@ if (Test-Path $envPath) {
 
 # Bring up the lab
 if (Ensure-Packer) {
-    Write-Host "Launching lab bring-up (this may take a while)..."
-    try {
-        make up-all
-    } catch {
-        Write-Warning "'make' command failed.  Attempting to run the lab-up script directly..."
-        # Fall back to running the PowerShell orchestration script directly
-        Run-PowerShellScript -ScriptPath "scripts/lab-up.ps1"
     Write-Host "Launching lab bring-up (this may take a while)..." -ForegroundColor Cyan
     try {
         make up-all

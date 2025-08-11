@@ -40,18 +40,10 @@ $resolvedOutput = [System.IO.Path]::GetFullPath($Output)
 
 Ensure-PS2EXE
 
-try {
-    $Source  = (Resolve-Path $Source).Path
-    $Output  = [System.IO.Path]::GetFullPath($Output)
-    Write-Host "Compiling $Source to $Output..."
-    Invoke-PS2EXE -InputFile $Source -OutputFile $Output -NoConsole
-    Write-Host "Executable created: $Output" -ForegroundColor Green
-
 Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
 try {
     Invoke-PS2EXE -InputFile $resolvedSource -OutputFile $resolvedOutput -NoConsole
     Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
-
 } catch {
     Write-Error "Compilation failed: $_"
     exit 1
