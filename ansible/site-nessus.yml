@@ -1,0 +1,6 @@
+---
+- name: Install Nessus on Nessus VM
+  hosts: nessus
+  become: true
+  roles:
+    - nessus_vm
