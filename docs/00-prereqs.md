@@ -63,6 +63,7 @@ pwsh -File .\scripts\install-prereqs.ps1
 ```
 
 The script checks if `make` and `pwsh` are available on your system and installs them via winget when necessary.
+If winget is missing, the script will warn and exit without making changes.
 
 Once prerequisites are installed, you can build the self‑contained installer and package the repository with:
 
@@ -105,3 +106,4 @@ pwsh -File .\scripts\standalone-installer.ps1
 
 k3s uses containerd by default; Docker images run fine.
 We'll add Portainer, Traefik (TLS for *.lab.local), and MetalLB IP pools per segment in later chunks.
+

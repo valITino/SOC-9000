@@ -280,3 +280,4 @@ If names fail: run `scripts\hosts-refresh.ps1` as Admin.
 - `make reset`      # soft reset (reapply apps)
 - `make reset-hard` # also wipes PV data on ContainerHost
 - `make down-all`   # stop VMs
+

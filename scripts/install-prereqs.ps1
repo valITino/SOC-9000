@@ -1,8 +1,8 @@
-<# 
-    install-prereqs.ps1: Installs GNU Make and PowerShell 7 if they are not already present.
+<#
+    install-prereqs.ps1: Installs GNU Make and PowerShell 7 if they are not already present.
 
     This script uses winget to install the required tools and should be run with Administrator
-    privileges.  If the tool is already installed, it will be skipped.
+    privileges. If the tool is already installed, it will be skipped.
 
     Usage:
         pwsh -File .\scripts\install-prereqs.ps1
@@ -10,17 +10,19 @@
     You can also call this script via the Makefile target:
         make prereqs
 #>
-[CmdletBinding()] param()
+
+[CmdletBinding()]
+param()
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Ensure-Winget {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Warning "winget is not installed or not in PATH. Installation attempts may fail."
-    }
+# Prefer a hard stop on missing winget so we don't spam errors later
+$winget = Get-Command winget -ErrorAction SilentlyContinue
+if (-not $winget) {
+    Write-Warning "winget is not installed or not in PATH. Skipping prerequisite installation."
+    return
 }
-
-Ensure-Winget
 
 # Check for GNU Make
 $makeCmd = Get-Command make -ErrorAction SilentlyContinue
@@ -38,14 +40,14 @@ if (-not $makeCmd) {
 # Check for PowerShell 7 (`pwsh`)
 $pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue
 if (-not $pwshCmd) {
-    Write-Host "PowerShell 7 not found. Installing via winget..." -ForegroundColor Cyan
+    Write-Host "PowerShell 7 not found. Installing via winget..." -ForegroundColor Cyan
     try {
         winget install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements
     } catch {
-        Write-Warning "Failed to install PowerShell 7 via winget. You may need to install it manually."
+        Write-Warning "Failed to install PowerShell 7 via winget. You may need to install it manually."
     }
 } else {
-    Write-Host "PowerShell 7 already installed." -ForegroundColor Green
+    Write-Host "PowerShell 7 already installed." -ForegroundColor Green
 }
 
 Write-Host "Prerequisite installation complete." -ForegroundColor Green

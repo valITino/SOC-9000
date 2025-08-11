@@ -62,7 +62,7 @@ function Download-File {
 # Define download URLs
 $downloads = @{
     "pfsense.iso"             = @{ url = "https://atx.mirrors.pfsense.org/mirror/downloads/pfSense-CE-2.7.2-RELEASE-amd64.iso"; type="application/octet-stream" }
-    "ubuntu-22.04.iso"        = @{ url = "https://releases.ubuntu.com/22.04/ubuntu-22.04.3-live-server-amd64.iso"; type="application/octet-stream" }
+    "ubuntu-22.04.iso"        = @{ url = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"; type="application/octet-stream" }
     "win11-eval.iso"          = @{ url = "https://software-download.microsoft.com/download/pr/Win11_23H2_English_x64v2.iso"; type="application/octet-stream" }
     "nessus_latest_amd64.deb" = @{ url = "https://www.tenable.com/downloads/api/v1/public/pages/nessus/downloads/19268/download?i_agree_to_tenable_license_agreement=true"; type="application/vnd.debian.binary-package" }
 }
@@ -73,3 +73,4 @@ foreach ($item in $downloads.GetEnumerator()) {
 }
 
 Write-Host "All downloads complete."
+
