@@ -1,7 +1,7 @@
 SHELL := pwsh
 
 help:
-@Write-Host "Targets: init, env, check, up, down"
+@Write-Host "Targets: init, env, check, up-all, down-all, status"
 
 init:
 @Copy-Item .env.example .env -Force
@@ -13,8 +13,11 @@ env:
 check:
 @pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1 -CheckOnly
 
-up:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1
+up-all:
+@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-up.ps1
 
-down:
-@pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/down.ps1
+down-all:
+@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-down.ps1
+
+status:
+@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-status.ps1
