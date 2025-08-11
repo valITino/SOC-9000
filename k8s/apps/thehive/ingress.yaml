@@ -1,0 +1,21 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: thehive
+  namespace: soc
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: thehive.lab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # We'll install Helm with fullnameOverride=thehive
+                name: thehive
+                port:
+                  number: 9000
