@@ -1,0 +1,31 @@
+---
+- name: Render config.xml with syslog target (reusing main template but adding syslog)
+  ansible.builtin.template:
+    src: ../pfsense_restore/files/config.xml.j2
+    dest: /root/config.xml
+    mode: '0600'
+  vars:
+    syslog_target: "{{ lookup('env','PFSENSE_SYSLOG_TARGET') | default('172.22.10.10') }}"
+
+- name: Inject syslog settings via pfSsh.php restore
+  ansible.builtin.shell: |
+    cat >/root/restore.php <<'PHP'
+    <?php
+    require_once("util.inc");
+    global $config;
+    // Add/overwrite syslog remote target
+    $config['syslog']['remoteserver'][] = array(
+      'ip' => '{{ syslog_target }}',
+      'transport' => 'udp',
+      'port' => '514',
+      'level' => 'info',
+      'enabled' => 'on'
+    );
+    write_config("Set remote syslog target for SOC-9000");
+    ?>
+    PHP
+    php -d display_errors=1 /root/restore.php
+  args: { executable: /bin/sh }
+
+- name: Restart syslog service
+  ansible.builtin.shell: /usr/local/sbin/pfSsh.php playback svc restart syslog

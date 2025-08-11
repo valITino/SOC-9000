@@ -24,4 +24,13 @@
     <rule><type>pass</type><interface>opt2</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>VICTIM any</descr><source><network>opt2</network></source><destination><any/></destination></rule>
     <rule><type>pass</type><interface>opt3</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>RED any</descr><source><network>opt3</network></source><destination><any/></destination></rule>
   </filter>
+  <syslog>
+    <remoteserver>
+      <ip>{{ syslog_target | default('172.22.10.10') }}</ip>
+      <transport>udp</transport>
+      <port>514</port>
+      <level>info</level>
+      <enabled>on</enabled>
+    </remoteserver>
+  </syslog>
 </config>

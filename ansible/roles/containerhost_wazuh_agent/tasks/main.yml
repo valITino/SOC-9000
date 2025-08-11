@@ -1,0 +1,33 @@
+---
+- name: Add Wazuh APT repo
+  become: yes
+  shell: |
+    curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor | tee /usr/share/keyrings/wazuh.gpg >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | tee /etc/apt/sources.list.d/wazuh.list
+  args: { creates: /etc/apt/sources.list.d/wazuh.list }
+
+- name: Install wazuh-agent
+  become: yes
+  apt: { name: wazuh-agent, state: present, update_cache: yes }
+
+- name: Configure manager address
+  become: yes
+  replace:
+    path: /var/ossec/etc/ossec.conf
+    regexp: '<address>.*</address>'
+    replace: '<address>{{ lookup("env","WAZUH_MANAGER_LB_IP") | default("172.22.10.62") }}</address>'
+
+- name: Ensure localfile for pfSense logs
+  become: yes
+  blockinfile:
+    path: /var/ossec/etc/ossec.conf
+    marker: "<!-- PF-SOC-9000 {mark} -->"
+    block: |
+      <localfile>
+        <log_format>syslog</log_format>
+        <location>/var/log/pfsense/pfsense.log</location>
+      </localfile>
+
+- name: Enable & restart agent
+  become: yes
+  service: { name: wazuh-agent, state: restarted, enabled: yes }
