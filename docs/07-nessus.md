@@ -9,5 +9,7 @@ pwsh -File .\scripts\deploy-nessus-essentials.ps1
 kubectl -n soc get pods -w
 ```
 
-Open https://nessus.lab.local:8834, select Nessus Essentials, enter/obtain an
-activation code, and create the admin user.
+### Usage
+
+1. Open `https://nessus.lab.local:8834`.
+2. Select **Nessus Essentials**, enter or obtain an activation code, and create the admin user.

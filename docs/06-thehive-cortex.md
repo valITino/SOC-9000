@@ -11,20 +11,15 @@ pwsh -File .\scripts\storage-defaults-reset.ps1   # optional
 kubectl get pods -n soc -w
 ```
 
-URLs
+### URLs
 
-    https://thehive.lab.local
+- `https://thehive.lab.local`
+- `https://cortex.lab.local`
 
-    https://cortex.lab.local
+### Post‑install
 
-Post-install
-
-    In Cortex, create an admin and an API key.
-
-    In TheHive → Admin → Cortex, add:
-
-        URL: http://cortex.soc.svc:9001
-
-        API key: (the key you created)
-
-    Run a test analyzer from a case/observable.
+1. In **Cortex**, create an admin user and generate an API key.
+2. In **TheHive**, navigate to **Admin → Cortex** and add a new Cortex connection with:
+   - **URL:** `http://cortex.soc.svc:9001`
+   - **API key:** (the key you created in Cortex)
+3. Run a test analyzer from a case or observable to validate the integration.

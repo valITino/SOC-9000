@@ -22,9 +22,8 @@ NESSUS_ADMIN_PASS=ChangeMe_S0C!
 pwsh -File .\scripts\nessus-vm-build-and-config.ps1
 ```
 
-Access
+### Access
 
-    URL: https://nessus.lab.local:8834
+- `https://nessus.lab.local:8834`
 
-    If NESSUS_ACTIVATION_CODE is set, the role attempts auto-registration.
-    Otherwise, finish in the web UI and create the admin user.
+If `NESSUS_ACTIVATION_CODE` is set in `.env`, the Ansible role will attempt to register Nessus automatically; otherwise, finish the activation in the UI and create the admin user.

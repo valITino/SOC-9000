@@ -12,21 +12,16 @@ pwsh -File .\scripts\expose-wazuh-manager.ps1
 pwsh -File .\scripts\telemetry-bootstrap.ps1
 ```
 
-What it does
+### What it does
 
-    pfSense → ContainerHost (rsyslog) → Wazuh using the Wazuh agent on the ContainerHost.
+- pfSense sends logs to the ContainerHost (rsyslog), which forwards them to Wazuh via the Wazuh agent on the ContainerHost.
+- The Windows victim sends logs directly to Wazuh via the Windows agent.
+- **Atomic Red Team** runs a handful of safe tests (with cleanup).
+- The **CALDERA Sandcat** agent installs and phones home; you can run a small operation from the UI if desired.
 
-    Windows Victim → Wazuh via the Windows agent.
+### URLs
 
-    Atomic Red Team runs a handful of safe tests (with cleanup).
-
-    CALDERA Sandcat agent installs and phones home; run a small operation from the UI if desired.
-
-URLs
-
-    Wazuh: https://wazuh.lab.local
-
-    CALDERA: https://caldera.lab.local
-
-    Notes: Nessus (Chunk 7/7B) remains available at https://nessus.lab.local:8834. If your pfSense UI or CALDERA agent paths differ, adjust the role URLs accordingly.
+- **Wazuh:** `https://wazuh.lab.local`
+- **CALDERA:** `https://caldera.lab.local`
+- **Nessus:** `https://nessus.lab.local:8834` (from Chunk 7/7B). If your pfSense UI or CALDERA agent paths differ, adjust the role URLs accordingly.
 

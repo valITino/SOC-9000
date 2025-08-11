@@ -10,12 +10,10 @@ This chunk:
 ```powershell
 pwsh -File .\scripts\gen-ssl.ps1
 pwsh -File .\scripts\apply-k8s.ps1
-
-URLs
-
-    https://caldera.lab.local (admin/admin)
-
-    https://dvwa.lab.local
-
-    https://portainer.lab.local:9443 (after LB IP appears in kubectl -n portainer get svc portainer)
 ```
+
+### URLs
+
+- `https://caldera.lab.local` (login: `admin`/`admin`)
+- `https://dvwa.lab.local`
+- `https://portainer.lab.local:9443` (once the Portainer LoadBalancer IP appears, check with `kubectl -n portainer get svc portainer`)
