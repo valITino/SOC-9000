@@ -1,0 +1,27 @@
+---
+- name: Deploy MetalLB namespace and components
+  ansible.builtin.shell: |
+    kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+  args: { creates: /var/lib/rancher/k3s/server/manifests/metallb-native.yaml.done }
+  register: _metallb
+  changed_when: _metallb.rc == 0
+
+- name: Wait for metallb controller
+  ansible.builtin.shell: "kubectl -n metallb-system rollout status deploy/controller --timeout=180s"
+
+- name: Apply IPAddressPool
+  ansible.builtin.template:
+    src: ipaddresspools.yaml.j2
+    dest: /tmp/metallb-ipaddresspools.yaml
+  register: _tpl1
+
+- name: Apply L2Advertisement
+  ansible.builtin.template:
+    src: l2advertisements.yaml.j2
+    dest: /tmp/metallb-l2.yaml
+  register: _tpl2
+
+- name: kubectl apply metallb resources
+  ansible.builtin.shell: |
+    kubectl apply -f /tmp/metallb-ipaddresspools.yaml
+    kubectl apply -f /tmp/metallb-l2.yaml

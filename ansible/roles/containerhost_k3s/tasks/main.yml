@@ -1,0 +1,21 @@
+---
+- name: Install dependencies
+  ansible.builtin.apt:
+    name: [ curl, ca-certificates, jq ]
+    state: present
+    update_cache: yes
+
+- name: Install k3s
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_CHANNEL="{{ lookup('env','K3S_CHANNEL') | default('stable') }}" \
+      INSTALL_K3S_VERSION="{{ lookup('env','K3S_VERSION') | default('') }}" \
+      sh -
+  args: { creates: /usr/local/bin/k3s }
+
+- name: Wait for k3s node Ready
+  ansible.builtin.shell: "kubectl get nodes --no-headers | grep -q ' Ready '"
+  register: _ready
+  retries: 30
+  delay: 5
+  until: _ready.rc == 0

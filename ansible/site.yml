@@ -1,0 +1,14 @@
+---
+- name: pfSense post-install bootstrap
+  hosts: pfsense
+  gather_facts: no
+  roles:
+    - pfsense_restore
+
+- name: ContainerHost k3s + MetalLB + Portainer
+  hosts: containerhost
+  become: yes
+  roles:
+    - containerhost_k3s
+    - metallb
+    - portainer

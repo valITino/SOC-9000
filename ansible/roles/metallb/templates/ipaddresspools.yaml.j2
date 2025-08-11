@@ -1,0 +1,11 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: soc-9000-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - "{{ metallb.pools.mgmt }}"
+    - "{{ metallb.pools.soc }}"
+    - "{{ metallb.pools.victim }}"
+    - "{{ metallb.pools.red }}"
