@@ -31,5 +31,8 @@ reset:
 reset-hard:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/reset-lab.ps1 -Hard
 
+download-isos:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/download-isos.ps1
+
 smoke:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1

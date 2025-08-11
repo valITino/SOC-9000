@@ -27,11 +27,22 @@ Goal: Prepare Windows 11 + VMware Workstation for a pfSense-routed, k3s-managed,
 > We emulate VLANs using multiple VMnets; pfSense has one NIC per segment.
 
 ## Downloads (place into `E:\\SOC-9000\\isos`)
+The lab requires several ISO and installer files that are **not included** in the repo:
 
-- pfSense CE ISO (AMD64)  → `pfsense.iso`
-- Ubuntu Server 22.04 ISO (AMD64) → `ubuntu-22.04.iso`
-- Windows 11 Evaluation ISO (EN-Intl) → `win11-eval.iso`
+- pfSense CE ISO (AMD64)
+- Ubuntu Server 22.04 ISO (AMD64)
+- Windows 11 Evaluation ISO (English)
 - Nessus Essentials `.deb` (Ubuntu AMD64)
+
+You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch them automatically.  From the repo root run:
+
+```powershell
+pwsh -File .\scripts\download-isos.ps1
+# or using make:
+make download-isos
+```
+
+The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
 ## SSH key
 

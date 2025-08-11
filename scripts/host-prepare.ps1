@@ -57,5 +57,6 @@ Write-Host "`nNext steps:"
    - Ubuntu 22.04 (AMD64)-> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
    - Windows 11 Eval     -> $(Join-Path $IsoDir 'win11-eval.iso')
    - Nessus Essentials .deb (Ubuntu AMD64)"
+"   (Tip: run scripts\download-isos.ps1 to download these automatically)"
 "3) Ensure SSH key at %USERPROFILE%\.ssh\id_ed25519 (or create it)."
 "4) (Optional) Copy SSH key into WSL: scripts\copy-ssh-key-to-wsl.ps1"
