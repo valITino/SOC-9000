@@ -20,12 +20,43 @@ $sumName = "SHA256SUMS.txt"
 # Remove any previous artifacts
 Remove-Item -ErrorAction SilentlyContinue -Force $zipName, $sumName
 
-# Define exclusion list (omit large/transient directories and zip files)
-$exclude = @(".git","artifacts","isos","temp","*.zip")
+<#
+    Compress-Archive in Windows PowerShell 5.1 does not support the -Exclude parameter.  To ensure
+    compatibility across PowerShell versions, we stage the files to be zipped in a temporary
+    directory while manually filtering out excluded directories and file patterns.
+#>
 
-# Create the starter zip
+# Define exclusion lists (omit large/transient directories and certain patterns)
+$excludeDirs    = @(".git", "artifacts", "isos", "temp")
+$excludePatterns = @("*.zip", "*.exe")
+
+# Create a temporary staging directory
+$tempDir = Join-Path $env:TEMP "soc9000_packaging"
+if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
+New-Item -ItemType Directory -Path $tempDir | Out-Null
+
 Write-Host "Packaging starter zip: $zipName" -ForegroundColor Cyan
-Compress-Archive -Path * -DestinationPath $zipName -Force -CompressionLevel Optimal -Exclude $exclude
+
+# Copy all items except excluded ones into the staging directory
+Get-ChildItem -LiteralPath . -Force | ForEach-Object {
+    # Skip directories that are in the exclusion list
+    if ($excludeDirs -contains $_.Name) {
+        return
+    }
+    # Skip items matching excluded patterns
+    foreach ($pattern in $excludePatterns) {
+        if ($_.Name -like $pattern) {
+            return
+        }
+    }
+    Copy-Item -Path $_.FullName -Destination $tempDir -Recurse -Force -Container
+}
+
+# Create the zip from the staging directory
+Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $zipName -Force -CompressionLevel Optimal
+
+# Clean up staging directory
+Remove-Item -Recurse -Force $tempDir
 
 # Compute SHA256 checksums for the installer and starter zip
 Write-Host "Computing checksums..." -ForegroundColor Cyan
