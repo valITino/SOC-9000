@@ -1,0 +1,9 @@
+# Default TLS for Traefik using our wildcard cert
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system   # k3s deploys Traefik in kube-system by default
+spec:
+  defaultCertificate:
+    secretName: wildcard-lab-local-tls
