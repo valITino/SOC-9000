@@ -63,6 +63,15 @@ pwsh -File .\scripts\copy-ssh-key-to-wsl.ps1
 pwsh -ExecutionPolicy Bypass -File .\scripts\host-prepare.ps1
 ```
 
+Alternatively, use the standalone installer to perform the clone, ISO download, and bring‑up in one step:
+
+```powershell
+# run from the repository root to install into E:\SOC-9000-Pre-Install
+make installer
+# or directly
+pwsh -File .\scripts\standalone-installer.ps1
+```
+
 ## Notes
 
 k3s uses containerd by default; Docker images run fine.

@@ -63,6 +63,25 @@ To download these automatically:
 
 The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads each file if it does not already exist, and verifies basic properties (size and type).  Direct download URLs are embedded in the script; you can update them if new releases become available.  If you prefer to supply your own ISOs, you can place them in the folder and the script will skip downloading.
 
+### One‑click installer
+
+If you’d rather avoid manual cloning and setup, you can use the standalone installer.  This PowerShell script clones the repo into a separate folder (default `E:\SOC-9000-Pre-Install`), downloads the required images, updates configuration paths, and runs the full bring‑up:
+
+```powershell
+# install to the default path (E:\SOC-9000-Pre-Install)
+pwsh -File .\scripts\standalone-installer.ps1
+
+# or specify a custom install directory
+pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000"
+```
+
+You can also build a self-contained `.exe` using the `build-exe` Make target:
+
+```powershell
+make build-exe
+# This produces SOC-9000-installer.exe in the repo root.  Double-click it to start.
+```
+
 ---
 
 ## 4. Install required software

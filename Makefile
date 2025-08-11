@@ -36,3 +36,11 @@ download-isos:
 
 smoke:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+
+# One-click installer (downloads ISOs, clones repo and runs up-all)
+installer:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/standalone-installer.ps1
+
+# Build an executable version of the installer (requires PS2EXE)
+build-exe:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1

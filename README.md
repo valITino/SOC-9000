@@ -31,7 +31,9 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 ## Quick Start
 
-### Clone and initialize
+### Clone and initialize (contributor path)
+
+If you are contributing to SOC‑9000 and wish to clone the repository directly, run:
 
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
@@ -41,7 +43,24 @@ make up-all           # end-to-end bring-up (VMs, k3s, apps, telemetry)
 make status           # show IPs/URLs
 ```
 
-First-time: you still perform a short manual pfSense install (Chunk 3), then the scripts auto-configure it.
+During `make up-all` you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
+
+### One‑click installation (end‑user path)
+
+For a frictionless setup, download a release from GitHub (look for `SOC-9000-installer.exe`) or run the standalone installer script provided in this repo.  This will clone the repo into a separate directory (default `E:\SOC-9000-Pre-Install`), download the required ISO images, update the configuration paths and launch the entire bring‑up:
+
+```powershell
+# from within the cloned repo, build the installer executable
+make build-exe
+
+# then run it (or distribute it to others)
+SOC-9000-installer.exe
+
+# Alternatively, without building an exe, run the PowerShell installer directly
+make installer
+```
+
+The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion between the `SOC-9000` repo folder and the base lab directory by installing everything under `E:\SOC-9000-Pre-Install` (or a path of your choice).
 
 ### URLs (after `make up-all`)
 
@@ -85,8 +104,7 @@ flowchart LR
 
 ## Documentation
 
-See [docs/00-prereqs.md](docs/00-prereqs.md) → `08-atomic-caldera-wazuh.md`.
-This repo is chunked so you can run pieces or the whole thing.
+See [docs/00-prereqs.md](docs/00-prereqs.md) → `08-atomic-caldera-wazuh.md` for full documentation and [docs/releases.md](docs/releases.md) for guidance on GitHub releases.  The repo is chunked so you can run pieces or the whole thing.
 
 ## Appendix A — pfSense install walk-through (exact screens & menus)
 
