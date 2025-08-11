@@ -33,11 +33,15 @@
 $ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest
 
 function Require-Administrator {
-    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-        Write-Warning "This installer must be run as Administrator.  Right-click PowerShell and choose 'Run as administrator'."
-        exit 1
+    if ($IsWindows) {
+        $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal   = New-Object Security.Principal.WindowsPrincipal($currentUser)
+        if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+            Write-Warning "This installer must be run as Administrator.  Right-click PowerShell and choose 'Run as administrator'."
+            exit 1
+        }
+    } else {
+        Write-Warning "Non-Windows platform detected; skipping Administrator check."
     }
 }
 
@@ -45,6 +49,12 @@ function Ensure-Git {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Error "Git is not installed or not in PATH.  Please install Git and retry."
         exit 1
+    }
+}
+
+function Ensure-Make {
+    if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+        Write-Warning "GNU Make was not found after prerequisite installation."
     }
 }
 
@@ -77,6 +87,7 @@ Try {
 } Catch {
     Write-Warning "Prerequisite installation script failed.  Continuing may result in errors."
 }
+Ensure-Make
 
 # Ensure the install and repository directories exist, expanding to absolute
 # paths without using Resolve-Path (which errors on non-existent paths).
@@ -97,11 +108,19 @@ Write-Host "Repository directory: $RepoDir"    -ForegroundColor Cyan
 # updates instead of recloning.
 if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
     Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
-    git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
+    try {
+        git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
+    } catch {
+        Write-Error "Failed to clone repository: $_"; exit 1
+    }
 } else {
     Write-Host "SOC-9000 repository already exists.  Pulling latest changes..." -ForegroundColor Green
     Push-Location $RepoDir
-    git pull --ff-only
+    try {
+        git pull --ff-only
+    } catch {
+        Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
+    }
     Pop-Location
 }
 

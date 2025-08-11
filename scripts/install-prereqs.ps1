@@ -14,6 +14,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Ensure-Winget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Warning "winget is not installed or not in PATH. Installation attempts may fail."
+    }
+}
+
+Ensure-Winget
+
 # Check for GNU Make
 $makeCmd = Get-Command make -ErrorAction SilentlyContinue
 if (-not $makeCmd) {
