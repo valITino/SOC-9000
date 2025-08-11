@@ -1,0 +1,25 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US
+  keyboard: { layout: us }
+  identity:
+    hostname: containerhost
+    username: labadmin
+    password: "ChangeMe_S0C9000!"
+  ssh:
+    install-server: true
+  packages:
+    - openssh-server
+    - open-vm-tools
+    - qemu-guest-agent
+    - curl
+    - ca-certificates
+    - jq
+    - net-tools
+    - nfs-common
+  storage:
+    layout:
+      name: direct
+  late-commands:
+    - curtin in-target --target=/target -- systemctl enable qemu-guest-agent || true
