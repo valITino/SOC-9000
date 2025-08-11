@@ -31,7 +31,26 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 ## Quick Start
 
-### Clone and initialize (contributor path)
+### Choose your installation path
+
+SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.
+
+1. **One‑click installer (end‑user)** — Download a prebuilt `SOC-9000-installer.exe` from a GitHub release, right‑click and run it as Administrator.  The executable clones the repo into a separate folder (default `E:\SOC-9000-Pre-Install`), downloads required ISO images, updates `.env`, and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
+2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
+
+   ```powershell
+   # install prerequisites (GNU Make and PowerShell 7)
+   make prereqs
+   # download ISO images
+   make download-isos
+   # edit .env if needed
+   make up-all
+   ```
+
+   This method is ideal if you don’t want to use Git but are comfortable running a few commands.
+3. **Git clone (contributor/developer)** — If you plan to contribute or prefer to work directly with the source repository, clone it and run the Make targets yourself.  See below.
+
+### Clone and initialize (contributor/developer path)
 
 If you are contributing to SOC‑9000 and wish to clone the repository directly, run:
 
@@ -42,6 +61,21 @@ make init             # creates .env — edit it
 make up-all           # end-to-end bring-up (VMs, k3s, apps, telemetry)
 make status           # show IPs/URLs
 ```
+
+Before building the installer EXE or running any other Make targets, ensure the required tools are installed:
+
+```powershell
+make prereqs          # installs GNU Make and PowerShell 7 if they are missing
+```
+
+You can then build the self‑contained installer executable via:
+
+```powershell
+make build-exe        # produces SOC-9000-installer.exe in the repo root
+make package          # packages SOC-9000-starter.zip and SHA256SUMS.txt for releases
+```
+
+The `install-all` target combines prerequisite installation and EXE build in one step.
 
 During `make up-all` you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
 

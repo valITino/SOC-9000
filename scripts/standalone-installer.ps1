@@ -38,10 +38,35 @@ function Ensure-Git {
     }
 }
 
+function Run-PowerShellScript {
+    param(
+        [Parameter(Mandatory)] [string]$ScriptPath,
+        [string[]]$Arguments = @()
+    )
+    # Try to execute the given script using pwsh if available; otherwise fallback to Windows PowerShell
+    if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+        & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    } elseif (Get-Command powershell -ErrorAction SilentlyContinue) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+    } else {
+        Write-Error "Neither pwsh nor powershell is available to run $ScriptPath.  Please install PowerShell."
+        exit 1
+    }
+}
+
 # Entry point
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Require-Administrator
 Ensure-Git
+
+# Install prerequisites (GNU Make and PowerShell 7) using the helper script.  This
+# ensures that the remainder of this installer can rely on make and pwsh.
+Try {
+    Write-Host "Checking prerequisites..." -ForegroundColor Cyan
+    Run-PowerShellScript -ScriptPath "scripts/install-prereqs.ps1"
+} Catch {
+    Write-Warning "Prerequisite installation script failed.  Continuing may result in errors."
+}
 
 # Normalize path
 $InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
@@ -78,7 +103,7 @@ $isoDir = Join-Path $InstallDir 'isos'
 Write-Host "Ensuring ISO directory exists: $isoDir"
 if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
 Write-Host "Downloading required ISOs..."
-pwsh -File scripts/download-isos.ps1 -IsoDir $isoDir
+Run-PowerShellScript -ScriptPath "scripts/download-isos.ps1" -Arguments @("-IsoDir", $isoDir)
 
 # Update .env with custom paths (basic replacement of ISO_DIR and LAB_ROOT)
 $envPath = Join-Path $repoDir '.env'
@@ -93,6 +118,12 @@ if (Test-Path $envPath) {
 
 # Bring up the lab
 Write-Host "Launching lab bring-up (this may take a while)..."
-make up-all
+try {
+    make up-all
+} catch {
+    Write-Warning "'make' command failed.  Attempting to run the lab-up script directly..."
+    # Fall back to running the PowerShell orchestration script directly
+    Run-PowerShellScript -ScriptPath "scripts/lab-up.ps1"
+}
 
 Write-Host "SOC-9000 installation complete." -ForegroundColor Green

@@ -46,7 +46,7 @@ The script checks for existing files and downloads what’s missing, using known
 
 ## Install prerequisites
 
-Before building the standalone installer or running any Make targets that rely on GNU Make or PowerShell 7, ensure these tools are installed.  A helper script, `scripts/install-prereqs.ps1`, is provided to install them automatically via winget.
+Before building the standalone installer or running any Make targets that rely on GNU Make or PowerShell 7, ensure these tools are installed.  A helper script, `scripts/install-prereqs.ps1`, is provided to install them automatically via winget.  The Makefile includes convenient targets for installing prerequisites and building the installer in one step.
 
 From the repo root, run:
 
@@ -62,6 +62,15 @@ pwsh -File .\scripts\install-prereqs.ps1
 ```
 
 The script checks if `make` and `pwsh` are available on your system and installs them via winget when necessary.
+
+Once prerequisites are installed, you can build the self‑contained installer and package the repository with:
+
+```powershell
+make install-all  # installs prereqs and builds SOC-9000-installer.exe
+make package      # creates SOC-9000-starter.zip and SHA256SUMS.txt
+```
+
+These targets are especially useful when preparing a GitHub release.
 
 ## SSH key
 
