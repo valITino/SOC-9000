@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kali-cli
+  namespace: red
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: kali-cli } }
+  template:
+    metadata: { labels: { app: kali-cli } }
+    spec:
+      containers:
+        - name: kali
+          image: kalilinux/kali-rolling
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh","-c","sleep infinity"]
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "1Gi" }

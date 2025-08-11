@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: soc }
+---
+apiVersion: v1
+kind: Namespace
+metadata: { name: victim }
+---
+apiVersion: v1
+kind: Namespace
+metadata: { name: red }
