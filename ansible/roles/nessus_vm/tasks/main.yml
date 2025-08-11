@@ -1,0 +1,48 @@
+---
+- name: Ensure dependencies
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: true
+
+- name: Copy Nessus .deb from Windows mount (isos dir)
+  vars:
+    deb_name: "{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
+  ansible.builtin.copy:
+    src: "/mnt/e/SOC-9000/isos/{{ deb_name }}"
+    dest: "/tmp/{{ deb_name }}"
+    mode: '0644'
+
+- name: Install Nessus
+  ansible.builtin.apt:
+    deb: "/tmp/{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
+    state: present
+
+- name: Enable & start nessusd
+  ansible.builtin.systemd:
+    name: nessusd
+    enabled: true
+    state: started
+
+- name: Optional register with activation code (if provided)
+  when: lookup('env', 'NESSUS_ACTIVATION_CODE') | default('') | length > 0
+  ansible.builtin.command: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env', 'NESSUS_ACTIVATION_CODE') }}
+  register: nessus_vm_reg_out
+  changed_when: "'already registered' not in nessus_vm_reg_out.stdout|lower"
+
+- name: Optional create admin user (if both user & pass provided)
+  when: (lookup('env', 'NESSUS_ADMIN_USER') | default('')) | length > 0 and
+        (lookup('env', 'NESSUS_ADMIN_PASS') | default('')) | length > 0
+  ansible.builtin.command: /opt/nessus/sbin/nessuscli adduser "{{ lookup('env', 'NESSUS_ADMIN_USER') }}"
+  args:
+    stdin: |
+      {{ lookup('env', 'NESSUS_ADMIN_PASS') }}
+      {{ lookup('env', 'NESSUS_ADMIN_PASS') }}
+      y
+      y
+      # (accept defaults and grant admin)
+  register: nessus_vm_adduser_out
+  changed_when: "'already exists' not in nessus_vm_adduser_out.stdout|lower"

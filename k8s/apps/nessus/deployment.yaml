@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nessus
+  namespace: soc
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nessus } }
+  template:
+    metadata: { labels: { app: nessus } }
+    spec:
+      containers:
+        - name: nessus
+          image: tenable/nessus:latest-ubuntu
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8834
+          readinessProbe:
+            httpGet: { path: /, port: 8834, scheme: HTTPS }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 8834, scheme: HTTPS }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          # IMPORTANT: Tenable's container doesn't support data volumes.
+          # Treat this as ephemeral for lab use.

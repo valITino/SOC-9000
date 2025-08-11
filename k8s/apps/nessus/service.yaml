@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nessus
+  namespace: soc
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "172.22.10.61"
+spec:
+  type: LoadBalancer
+  selector: { app: nessus }
+  ports:
+    - name: https
+      port: 8834
+      targetPort: 8834
+  loadBalancerIP: 172.22.10.61
