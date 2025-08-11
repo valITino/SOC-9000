@@ -1,0 +1,12 @@
+---
+- name: Create namespace
+  ansible.builtin.shell: "kubectl create ns portainer --dry-run=client -o yaml | kubectl apply -f -"
+
+- name: Deploy Portainer CE
+  ansible.builtin.shell: |
+    kubectl -n portainer apply -f https://downloads.portainer.io/ce2-21/portainer.yaml
+
+# Optional: expose as LoadBalancer (MetalLB will assign from MGMT pool)
+- name: Expose Portainer via LoadBalancer
+  ansible.builtin.shell: |
+    kubectl -n portainer patch svc portainer -p '{"spec":{"type":"LoadBalancer"}}'

@@ -1,0 +1,24 @@
+---
+- name: Copy templated config.xml to pfSense
+  ansible.builtin.template:
+    src: config.xml.j2
+    dest: /root/config.xml
+    mode: '0600'
+
+- name: Restore config via pfSsh.php
+  ansible.builtin.shell: |
+    cat >/root/restore.php <<'PHP'
+    <?php
+    require_once("util.inc");
+    config_restore("/root/config.xml");
+    echo "OK\n";
+    ?>
+    PHP
+    php -d display_errors=1 /root/restore.php
+  args:
+    executable: /bin/sh
+
+- name: Reboot pfSense to apply
+  ansible.builtin.shell: /sbin/reboot
+  async: 1
+  poll: 0

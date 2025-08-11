@@ -1,0 +1,27 @@
+<config>
+  <system>
+    <hostname>pfsense</hostname>
+    <domain>{{ lab_domain }}</domain>
+    <timezone>Europe/Zurich</timezone>
+    <dnsserver>{{ pf.mgmt_ip }}</dnsserver>
+  </system>
+  <interfaces>
+    <wan><if>vmx0</if><ipaddr>dhcp</ipaddr><ipaddrv6>dhcp6</ipaddrv6></wan>
+    <lan><if>vmx1</if><ipaddr>{{ pf.mgmt_ip }}</ipaddr><subnet>24</subnet></lan>
+    <opt1><if>vmx2</if><descr>SOC</descr><ipaddr>{{ pf.soc_ip }}</ipaddr><subnet>24</subnet></opt1>
+    <opt2><if>vmx3</if><descr>VICTIM</descr><ipaddr>{{ pf.vic_ip }}</ipaddr><subnet>24</subnet></opt2>
+    <opt3><if>vmx4</if><descr>RED</descr><ipaddr>{{ pf.red_ip }}</ipaddr><subnet>24</subnet></opt3>
+  </interfaces>
+  <dhcpd>
+    <lan><enable>1</enable><range><from>172.22.10.100</from><to>172.22.10.199</to></range></lan>
+    <opt1><enable>1</enable><range><from>172.22.20.100</from><to>172.22.20.199</to></range></opt1>
+    <opt2><enable>1</enable><range><from>172.22.30.100</from><to>172.22.30.199</to></range></opt2>
+    <opt3><enable>1</enable><range><from>172.22.40.100</from><to>172.22.40.199</to></range></opt3>
+  </dhcpd>
+  <filter>
+    <rule><type>pass</type><interface>lan</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>LAN any</descr><source><network>lan</network></source><destination><any/></destination></rule>
+    <rule><type>pass</type><interface>opt1</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>SOC any</descr><source><network>opt1</network></source><destination><any/></destination></rule>
+    <rule><type>pass</type><interface>opt2</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>VICTIM any</descr><source><network>opt2</network></source><destination><any/></destination></rule>
+    <rule><type>pass</type><interface>opt3</interface><ipprotocol>inet</ipprotocol><protocol>any</protocol><descr>RED any</descr><source><network>opt3</network></source><destination><any/></destination></rule>
+  </filter>
+</config>
