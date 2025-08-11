@@ -68,14 +68,13 @@ Try {
     Write-Warning "Prerequisite installation script failed.  Continuing may result in errors."
 }
 
-# Normalize path
-$InstallDir = (Resolve-Path -LiteralPath $InstallDir).Path
-Write-Host "Install directory: $InstallDir"
-
-# Create install directory
+# Ensure the install directory exists and expand to a full path without relying on Resolve-Path (which fails if the directory does not yet exist)
 if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
+# Convert to absolute path using .NET rather than Resolve-Path to avoid errors when the directory is newly created
+$InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
+Write-Host "Install directory: $InstallDir"
 
 # Clone or update repository
 $repoDir = Join-Path $InstallDir 'SOC-9000'
