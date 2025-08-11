@@ -5,7 +5,7 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 ## Contents
 
 - [Overview](#overview)
-- [Quickstart](#quickstart)
+- [Quick Start](#quick-start)
 - [Documentation](#documentation)
 - [Appendix A — pfSense install walk-through](#appendix-a--pfsense-install-walk-through-exact-screens--menus)
 - [Appendix B — 1-page printable quick-start](#appendix-b--1-page-printable-quick-start)

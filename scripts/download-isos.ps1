@@ -41,7 +41,7 @@ function Download-File {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
     } catch {
-        Write-Warning "Failed to download $Url: $_"
+        Write-Warning "Failed to download ${Url}: $_"
         return
     }
     # Basic validation
