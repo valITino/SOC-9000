@@ -44,6 +44,25 @@ make download-isos
 
 The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
+## Install prerequisites
+
+Before building the standalone installer or running any Make targets that rely on GNU Make or PowerShell 7, ensure these tools are installed.  A helper script, `scripts/install-prereqs.ps1`, is provided to install them automatically via winget.
+
+From the repo root, run:
+
+```powershell
+cd E:\SOC-9000\SOC-9000
+make prereqs      # installs GNU Make and PowerShell 7 if missing
+```
+
+Alternatively, you can call the script directly:
+
+```powershell
+pwsh -File .\scripts\install-prereqs.ps1
+```
+
+The script checks if `make` and `pwsh` are available on your system and installs them via winget when necessary.
+
 ## SSH key
 
 Generate or reuse:

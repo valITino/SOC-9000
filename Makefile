@@ -41,6 +41,20 @@ smoke:
 installer:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/standalone-installer.ps1
 
-# Build an executable version of the installer (requires PS2EXE)
+
+# Install prerequisites (GNU Make and PowerShell 7) via winget
+prereqs:
+	@powershell -ExecutionPolicy Bypass -File scripts/install-prereqs.ps1
+
+# Build an executable version of the installer (requires PS2EXE).  Use Windows PowerShell as a fallback
 build-exe:
-	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1
+	@powershell -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1
+
+# Install prerequisites and build the EXE in one step
+install-all:
+	make prereqs
+	make build-exe
+
+# Package the starter zip and checksums
+package:
+	@powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1

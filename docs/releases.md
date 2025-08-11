@@ -25,3 +25,21 @@ GitHub Packages (GHCR) are useful for hosting container images and Helm charts. 
 - A brief `BEGINNER-README.txt` pointing to the beginner guide in `docs/`
 
 Contributors should still fork and clone the repository directly; releases are aimed at end‑users who want minimal friction.
+
+## Building release assets
+
+To prepare a new release, you can use the Makefile targets provided in the repository:
+
+- Install prerequisites and build the standalone installer EXE:
+
+  ```powershell
+  make install-all
+  ```
+
+- Package the repository and compute checksums:
+
+  ```powershell
+  make package
+  ```
+
+The first command (`install-all`) installs GNU Make and PowerShell 7 (if missing) and then builds `SOC-9000-installer.exe`.  The second command (`package`) creates `SOC-9000-starter.zip` excluding large or transient directories and writes a `SHA256SUMS.txt` file with checksums for both the EXE and the ZIP.  These are the files you should attach to your GitHub release.

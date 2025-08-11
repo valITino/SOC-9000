@@ -87,11 +87,23 @@ make build-exe
 ## 4. Install required software
 
 1. Still in **PowerShell as Administrator**, install Git, Packer, kubectl, Helm, OpenSSL and WSL:
+
    ```powershell
    winget install -e Git.Git HashiCorp.Packer Kubernetes.kubectl Helm.Helm OpenSSL.Win64
    wsl --install -d Ubuntu-22.04
    ```
-2. After WSL installs, launch **Ubuntu 22.04** from the Start menu and run:
+
+2. Install the lab prerequisites (**GNU Make** and **PowerShell 7**).  A helper script is provided to detect and install these tools via winget:
+
+   ```powershell
+   cd E:\SOC-9000\SOC-9000
+   make prereqs      # or: pwsh -File .\scripts\install-prereqs.ps1
+   ```
+
+   This step ensures that both GNU Make and PowerShell 7 are available before you attempt to build the standalone installer or use other Make targets.  If the tools are already installed, the script skips them.
+
+3. After WSL installs, launch **Ubuntu 22.04** from the Start menu and run:
+
    ```bash
    sudo apt update && sudo apt -y install ansible git jq curl
    ```
