@@ -10,7 +10,10 @@ $ErrorActionPreference = "Stop"
 function Load-Env($path=".env"){
   if(!(Test-Path $path)){ throw ".env not found. Run make init" }
   Get-Content $path | ? {$_ -and $_ -notmatch '^\s*#'} | % {
-    if ($_ -match '^\s*([^=]+)=(.*)$'){ $env:$($matches[1].Trim())=$matches[2].Trim() }
+    if ($_ -match '^\s*([^=]+)=(.*)$'){
+      $name = $matches[1].Trim()
+      $env:${name} = $matches[2].Trim()
+    }
   }
 }
 
