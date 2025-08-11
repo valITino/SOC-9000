@@ -1,0 +1,23 @@
+extends: default
+rules:
+  line-length:
+    max: 120
+    level: warning
+  braces:
+    max-spaces-inside: 1
+    level: warning
+  brackets:
+    max-spaces-inside: 1
+    level: warning
+  document-start: disable
+  truthy: disable
+  comments-indentation: false
+  colons: disable
+  commas:
+    min-spaces-after: 1
+    level: warning
+  comments:
+    min-spaces-from-content: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
