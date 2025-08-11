@@ -27,6 +27,7 @@ Goal: Prepare Windows 11 + VMware Workstation for a pfSense-routed, k3s-managed,
 > We emulate VLANs using multiple VMnets; pfSense has one NIC per segment.
 
 ## Downloads (place into `E:\\SOC-9000\\isos`)
+
 The lab requires several ISO and installer files that are **not included** in the repo:
 
 - pfSense CE ISO (AMD64)

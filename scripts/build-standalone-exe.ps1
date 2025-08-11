@@ -20,12 +20,22 @@ $ErrorActionPreference = 'Stop'
 function Ensure-PS2EXE {
     if (-not (Get-Command Invoke-PS2EXE -ErrorAction SilentlyContinue)) {
         Write-Host "PS2EXE module not found. Installing..." -ForegroundColor Yellow
-        Install-Module -Name PS2EXE -Scope CurrentUser -Force
+        try {
+            Install-Module -Name PS2EXE -Scope CurrentUser -Force
+        } catch {
+            Write-Error "Failed to install PS2EXE module: $_"
+            exit 1
+        }
     }
 }
 
 Ensure-PS2EXE
 
 Write-Host "Compiling $Source to $Output..."
-Invoke-PS2EXE -InputFile $Source -OutputFile $Output -NoConsole
-Write-Host "Executable created: $Output" -ForegroundColor Green
+try {
+    Invoke-PS2EXE -InputFile $Source -OutputFile $Output -NoConsole
+    Write-Host "Executable created: $Output" -ForegroundColor Green
+} catch {
+    Write-Error "Compilation failed: $_"
+    exit 1
+}
