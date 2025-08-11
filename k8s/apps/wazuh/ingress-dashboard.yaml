@@ -1,0 +1,21 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wazuh-dashboard
+  namespace: soc
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: wazuh.lab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # Upstream creates a Service named 'dashboard' (port 5601)
+                name: dashboard
+                port:
+                  number: 5601
