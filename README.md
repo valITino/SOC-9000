@@ -6,6 +6,7 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 **Apps:** Wazuh, TheHive, Cortex, CALDERA, DVWA, Kali (CLI), Nessus Essentials.
 
 ## Quickstart
+
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
@@ -93,7 +94,8 @@ You’ll see the pfSense console menu (numbered options). Do this:
     When asked which user can SSH: select admin (or allow both admin/root)
     Note the LAN IP shown in the banner.
 
-Immediately after install, pfSense may show 192.168.1.1 on LAN. Our automation will reassign LAN to 172.22.10.1 during the config import.
+Immediately after install, pfSense may show 192.168.1.1 on LAN.
+Our automation reassigns LAN to 172.22.10.1 during the config import.
 
 **Credentials:**
 

@@ -1,12 +1,12 @@
-lab_domain: "{{ lookup('env','LAB_DOMAIN') | default('lab.local') }}"
+lab_domain: "{{ lookup('env', 'LAB_DOMAIN') | default('lab.local') }}"
 pf:
-  mgmt_ip: "{{ lookup('env','PFSENSE_MGMT_IP') | default('172.22.10.1') }}"
-  soc_ip:  "{{ lookup('env','PFSENSE_SOC_IP')  | default('172.22.20.1') }}"
-  vic_ip:  "{{ lookup('env','PFSENSE_VICTIM_IP') | default('172.22.30.1') }}"
-  red_ip:  "{{ lookup('env','PFSENSE_RED_IP') | default('172.22.40.1') }}"
+  mgmt_ip: "{{ lookup('env', 'PFSENSE_MGMT_IP') | default('172.22.10.1') }}"
+  soc_ip: "{{ lookup('env', 'PFSENSE_SOC_IP') | default('172.22.20.1') }}"
+  vic_ip: "{{ lookup('env', 'PFSENSE_VICTIM_IP') | default('172.22.30.1') }}"
+  red_ip: "{{ lookup('env', 'PFSENSE_RED_IP') | default('172.22.40.1') }}"
 metallb:
   pools:
-    mgmt:   "{{ lookup('env','METALLB_POOL_MGMT') | default('172.22.10.50-172.22.10.99') }}"
-    soc:    "{{ lookup('env','METALLB_POOL_SOC') | default('172.22.20.50-172.22.20.199') }}"
-    victim: "{{ lookup('env','METALLB_POOL_VICTIM') | default('172.22.30.50-172.22.30.199') }}"
-    red:    "{{ lookup('env','METALLB_POOL_RED') | default('172.22.40.50-172.22.40.199') }}"
+    mgmt: "{{ lookup('env', 'METALLB_POOL_MGMT') | default('172.22.10.50-172.22.10.99') }}"
+    soc: "{{ lookup('env', 'METALLB_POOL_SOC') | default('172.22.20.50-172.22.20.199') }}"
+    victim: "{{ lookup('env', 'METALLB_POOL_VICTIM') | default('172.22.30.50-172.22.30.199') }}"
+    red: "{{ lookup('env', 'METALLB_POOL_RED') | default('172.22.40.50-172.22.40.199') }}"
