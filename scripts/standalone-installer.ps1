@@ -17,7 +17,17 @@
     using `scripts/build-standalone-exe.ps1`.
 #>
 [CmdletBinding()] param(
-    [string]$InstallDir = "E:\\SOC-9000-Pre-Install"
+    # Where prerequisite files (ISOs, artifacts, temp) will live.  This folder is
+    # separate from the repository itself to avoid confusion.  Defaults to
+    # E:\SOC-9000-Pre-Install.  It will be created if it does not exist.
+    [string]$InstallDir = "E:\\SOC-9000-Pre-Install",
+    
+    # Where to clone the SOC‑9000 repository.  Many users prefer the repo to
+    # reside directly under a volume root (e.g. E:\SOC-9000) while keeping
+    # downloads elsewhere.  Defaults to E:\SOC-9000.  The repository will be
+    # cloned or pulled into this directory.  It will be created if it does
+    # not exist.
+    [string]$RepoDir = "E:\\SOC-9000"
 )
 
 $ErrorActionPreference = 'Stop'; Set-StrictMode -Version Latest
@@ -68,51 +78,80 @@ Try {
     Write-Warning "Prerequisite installation script failed.  Continuing may result in errors."
 }
 
-# Ensure the install directory exists and expand to a full path without relying on Resolve-Path (which fails if the directory does not yet exist)
-if (-not (Test-Path $InstallDir)) {
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+# Ensure the install and repository directories exist, expanding to absolute
+# paths without using Resolve-Path (which errors on non-existent paths).
+foreach ($dir in @($InstallDir, $RepoDir)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
 }
-# Convert to absolute path using .NET rather than Resolve-Path to avoid errors when the directory is newly created
 $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
-Write-Host "Install directory: $InstallDir"
+$RepoDir    = [System.IO.Path]::GetFullPath($RepoDir)
 
-# Clone or update repository
-$repoDir = Join-Path $InstallDir 'SOC-9000'
-if (-not (Test-Path $repoDir)) {
-    Write-Host "Cloning SOC-9000 repository..."
-    git clone "https://github.com/valITino/SOC-9000.git" $repoDir
+Write-Host "Pre‑install directory: $InstallDir" -ForegroundColor Cyan
+Write-Host "Repository directory: $RepoDir"    -ForegroundColor Cyan
+
+# Clone or update the repository in RepoDir.  We always clone into RepoDir
+# directly (not into a subfolder) so that the repo root is exactly the
+# specified path.  If the directory already contains the repository, pull
+# updates instead of recloning.
+if (-not (Test-Path (Join-Path $RepoDir '.git'))) {
+    Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
+    git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
 } else {
-    Write-Host "SOC-9000 repository already exists.  Pulling latest changes..."
-    Push-Location $repoDir
+    Write-Host "SOC-9000 repository already exists.  Pulling latest changes..." -ForegroundColor Green
+    Push-Location $RepoDir
     git pull --ff-only
     Pop-Location
 }
 
-# Change to repo directory
-Set-Location $repoDir
+# Change to repo directory for subsequent operations
+Set-Location $RepoDir
 
-# Initialize environment
+# Initialize environment (.env) using make init if not present.  Because
+# Makefile and scripts live in the repository directory (RepoDir), we
+# invoke make from here.  If make is unavailable, warn but continue.
 if (-not (Test-Path ".env")) {
-    Write-Host "Initializing .env..."
-    make init
+    Write-Host "Initializing .env..." -ForegroundColor Green
+    try {
+        make init
+    } catch {
+        Write-Warning "Could not run 'make init'.  Ensure GNU Make is installed or create .env manually."
+    }
 }
 
-# Download ISOs to local iso folder
+# Download ISOs to the pre-install folder.  This uses the helper script
+Write-Host "Downloading required ISOs..." -ForegroundColor Cyan
 $isoDir = Join-Path $InstallDir 'isos'
-Write-Host "Ensuring ISO directory exists: $isoDir"
 if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
-Write-Host "Downloading required ISOs..."
-Run-PowerShellScript -ScriptPath "scripts/download-isos.ps1" -Arguments @("-IsoDir", $isoDir)
+Run-PowerShellScript -ScriptPath (Join-Path $RepoDir 'scripts/download-isos.ps1') -Arguments @('-IsoDir', $isoDir)
 
-# Update .env with custom paths (basic replacement of ISO_DIR and LAB_ROOT)
-$envPath = Join-Path $repoDir '.env'
+# Update .env with custom paths.  We set LAB_ROOT/REPO_ROOT to RepoDir and
+# ISO_DIR/ARTIFACTS_DIR/TEMP_DIR to InstallDir subfolders.  We also update
+# ISO-specific variables to point into the iso folder.  Preserve existing
+# variables that are not path-related.
+$envPath = Join-Path $RepoDir '.env'
 if (Test-Path $envPath) {
-    Write-Host "Updating .env with InstallDir and IsoDir..."
-    $content = Get-Content $envPath
-    $newContent = $content | ForEach-Object {
-        $_.Replace('E:\\SOC-9000', $InstallDir) -replace 'isos\\', "${isoDir.Replace($InstallDir, '').TrimStart('\\')}\\"
+    Write-Host "Updating .env with RepoDir and InstallDir paths..." -ForegroundColor Cyan
+    $lines = Get-Content $envPath
+    $updated = @()
+    foreach ($line in $lines) {
+        if ($line -match '^(LAB_ROOT)=') {
+            $updated += "LAB_ROOT=$RepoDir"
+        } elseif ($line -match '^(REPO_ROOT)=') {
+            $updated += "REPO_ROOT=$RepoDir"
+        } elseif ($line -match '^(ISO_DIR)=') {
+            $updated += "ISO_DIR=$isoDir"
+        } elseif ($line -match '^(ARTIFACTS_DIR)=') {
+            $updated += "ARTIFACTS_DIR=" + (Join-Path $InstallDir 'artifacts')
+        } elseif ($line -match '^(TEMP_DIR)=') {
+            $updated += "TEMP_DIR=" + (Join-Path $InstallDir 'temp')
+        } else {
+            $updated += $line
+        }
     }
-    $newContent | Set-Content $envPath
+    # Write updated lines back to file
+    $updated | Set-Content $envPath -Encoding ASCII
 }
 
 # Bring up the lab

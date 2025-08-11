@@ -35,7 +35,7 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.
 
-1. **One‑click installer (end‑user)** — Download a prebuilt `SOC-9000-installer.exe` from a GitHub release, right‑click and run it as Administrator.  The executable clones the repo into a separate folder (default `E:\SOC-9000-Pre-Install`), downloads required ISO images, updates `.env`, and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
+1. **One‑click installer (end‑user)** — Download a prebuilt `SOC-9000-installer.exe` from a GitHub release, right‑click and run it as Administrator.  The executable clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
 2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
 
    ```powershell
@@ -81,7 +81,7 @@ During `make up-all` you will still perform a short manual pfSense install (Chun
 
 ### One‑click installation (end‑user path)
 
-For a frictionless setup, download a release from GitHub (look for `SOC-9000-installer.exe`) or run the standalone installer script provided in this repo.  This will clone the repo into a separate directory (default `E:\SOC-9000-Pre-Install`), download the required ISO images, update the configuration paths and launch the entire bring‑up:
+For a frictionless setup, download a release from GitHub (look for `SOC-9000-installer.exe`) or run the standalone installer script provided in this repo.  By default, the installer clones the repo into `E:\SOC-9000` and stores ISO downloads and build files in `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and launches the entire bring‑up:
 
 ```powershell
 # from within the cloned repo, build the installer executable
@@ -94,7 +94,7 @@ SOC-9000-installer.exe
 make installer
 ```
 
-The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion between the `SOC-9000` repo folder and the base lab directory by installing everything under `E:\SOC-9000-Pre-Install` (or a path of your choice).
+The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion by keeping the repository itself in `E:\SOC-9000` while placing ISO downloads and build artifacts under `E:\SOC-9000-Pre-Install` (or paths of your choice).  This separation means that you never mix the Git clone with downloaded assets.
 
 ### URLs (after `make up-all`)
 

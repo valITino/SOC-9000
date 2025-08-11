@@ -65,14 +65,17 @@ The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads 
 
 ### One‑click installer
 
-If you’d rather avoid manual cloning and setup, you can use the standalone installer.  This PowerShell script clones the repo into a separate folder (default `E:\SOC-9000-Pre-Install`), downloads the required images, updates configuration paths, and runs the full bring‑up:
+If you’d rather avoid manual cloning and setup, you can use the standalone installer.  This PowerShell script separates **where the repo lives** from **where downloads and build artifacts live**.  By default it clones the repository into `E:\SOC-9000` and downloads the required images into `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and runs the full bring‑up.  You can override either location via parameters:
 
 ```powershell
-# install to the default path (E:\SOC-9000-Pre-Install)
+# use defaults: repo in E:\SOC-9000 and ISOs/artifacts in E:\SOC-9000-Pre-Install
 pwsh -File .\scripts\standalone-installer.ps1
 
-# or specify a custom install directory
-pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000"
+# customise the install directory (where ISOs, artifacts and temp files live)
+pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000-Pre-Install"
+
+# customise both repo location and install location
+pwsh -File .\scripts\standalone-installer.ps1 -RepoDir "D:\SOC-9000" -InstallDir "D:\Labs\SOC-9000-Pre-Install"
 ```
 
 You can also build a self-contained `.exe` using the `build-exe` Make target:
