@@ -57,4 +57,3 @@ if ($failed) {
 
 Write-Host "Prerequisite installation complete." -ForegroundColor Green
 exit 0
-
