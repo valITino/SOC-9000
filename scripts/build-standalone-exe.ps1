@@ -53,7 +53,8 @@ Ensure-PS2EXE
 
 Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
 try {
-    Invoke-PS2EXE -InputFile $tempSource -OutputFile $resolvedOutput -NoConsole
+    # Use console output to aid diagnostics (avoid message boxes)
+    Invoke-PS2EXE -InputFile $tempSource -OutputFile $resolvedOutput
     Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
 } catch {
     Write-Error "Compilation failed: $_"

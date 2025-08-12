@@ -1,7 +1,7 @@
 # SOC-9000 - standalone-installer.ps1
 <#
     One-click installation for SOC-9000. Clones the repository, downloads ISOs,
-    and launches lab bring-up (`make up-all`). Run **as Administrator**.
+    and launches lab bring-up. Run **as Administrator**.
     Compatible with Windows PowerShell 5.1 and PowerShell 7.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "", Justification="User-facing colored output")]
@@ -90,12 +90,6 @@ function Test-Git {
     }
 }
 
-function Test-Make {
-    if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
-        Write-Warning "GNU Make was not found after prerequisite installation."
-    }
-}
-
 function Test-Packer {
     if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
         Write-Warning "HashiCorp Packer was not found. Lab bring-up cannot proceed."
@@ -121,7 +115,7 @@ function Invoke-PowerShellScript {
 
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Test-Administrator
-    Test-Git
+Test-Git
 
 # Prerequisites
 if (-not $SkipPrereqs) {
@@ -151,7 +145,6 @@ if (-not $SkipPrereqs) {
         }
     }
 }
-Test-Make
 
 # Directories
 if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
@@ -193,8 +186,12 @@ Set-Location $RepoDir
 
 # Initialize .env if missing
 if (-not (Test-Path ".env")) {
-    Write-Host "Initializing .env..." -ForegroundColor Green
-    try { make init } catch { Write-Warning "Could not run 'make init'. Ensure GNU Make is installed or create .env manually." }
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env" -Force
+        Write-Host "Created .env from template. Review and update before proceeding." -ForegroundColor Green
+    } else {
+        Write-Warning ".env.example not found; create .env manually."
+    }
 }
 
 # Download ISOs
@@ -203,7 +200,7 @@ if (-not $SkipIsoDownload) {
     if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
-                Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+        Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
     }
 }
 
@@ -227,12 +224,8 @@ if (Test-Path $envPath) {
 # Bring up lab
 if (-not $SkipBringUp) {
     if (Test-Packer) {
-        if ($PSCmdlet.ShouldProcess("Run 'make up-all'")) {
-            try { make up-all }
-            catch {
-                Write-Warning "'make up-all' failed. Attempting to run orchestration script directly..."
-                Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
-            }
+        if ($PSCmdlet.ShouldProcess("Bring up lab")) {
+            Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
         }
     } else {
         Write-Warning "Skipping lab bring-up because Packer is missing."

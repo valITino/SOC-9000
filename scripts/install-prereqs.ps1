@@ -1,5 +1,5 @@
 <#
-    install-prereqs.ps1: Installs GNU Make and PowerShell 7 if they are not already present.
+    install-prereqs.ps1: Installs PowerShell 7 and GNU Make if they are not already present.
 #>
 
 [CmdletBinding()]
@@ -22,9 +22,10 @@ if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     } catch {
         Write-Warning "Failed to install GNU Make via winget. You may need to install it manually."
     }
-    $makeDir = Join-Path ${env:ProgramFiles(x86)} 'GnuWin32\\bin'
+    # Try to add common GnuWin32 path to PATH for current session and persist if possible
+    $makeDir = Join-Path ${env:ProgramFiles(x86)} 'GnuWin32\bin'
     if (-not (Test-Path $makeDir)) {
-        $makeDir = Join-Path ${env:ProgramFiles} 'GnuWin32\\bin'
+        $makeDir = Join-Path ${env:ProgramFiles} 'GnuWin32\bin'
     }
     if (Test-Path $makeDir) {
         if (-not ($Env:Path.Split(';') -contains $makeDir)) {
