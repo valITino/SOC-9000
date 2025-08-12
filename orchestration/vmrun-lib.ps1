@@ -14,7 +14,11 @@ function Resolve-Vmrun {
 function Import-DotEnv([string]$Path = ".env") {
   if (!(Test-Path $Path)) { throw ".env not found at $Path. Run 'make init' first." }
   $lines = Get-Content $Path | Where-Object { $_ -and $_ -notmatch '^\s*#' }
-  foreach ($l in $lines) { if ($l -match '^\s*([^=]+)=(.*)$') { $env:$($matches[1].Trim()) = $matches[2].Trim() } }
+  foreach ($l in $lines) {
+    if ($l -match '^\s*([^=]+)=(.*)$') {
+      Set-Item -Path "Env:$($matches[1].Trim())" -Value $matches[2].Trim()
+    }
+  }
 }
 
 function Assert-Path([string]$p, [string]$why) {
@@ -32,5 +36,3 @@ function Vmrun { param([Parameter(ValueFromRemainingArguments)] $Args) & (Resolv
 function Start-VM([string]$Vmx) { Vmrun -T ws start $Vmx nogui | Out-Null }
 function Stop-VM([string]$Vmx)  { Vmrun -T ws stop  $Vmx soft   | Out-Null }
 function Get-VmxPath([string]$ArtifactsDir,[string]$VmName){ $p = Join-Path $ArtifactsDir "$VmName\$VmName.vmx"; if(Test-Path $p){$p}else{throw "VMX not found: $p"} }
-
-Export-ModuleMember -Function * -ErrorAction SilentlyContinue
