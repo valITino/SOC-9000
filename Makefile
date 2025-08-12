@@ -1,4 +1,4 @@
-	SHELL := /bin/bash
+SHELL := /bin/bash
 PWSH := $(shell command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null)
 
 help:
@@ -47,14 +47,14 @@ installer:
 prereqs:
 	@powershell -ExecutionPolicy Bypass -File scripts/install-prereqs.ps1
 
-# Build a self-contained installer script with embedded prerequisites
-build-installer:
-	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer.ps1
+# Build an executable version of the installer (requires PS2EXE).  Use Windows PowerShell as a fallback
+build-exe:
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1
 
-# Install prerequisites and build the installer script in one step
+# Install prerequisites and build the EXE in one step
 install-all:
 	make prereqs
-	make build-installer
+	make build-exe
 
 # Package the starter zip and checksums
 package:

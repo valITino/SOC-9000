@@ -2,26 +2,14 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$script:VmrunPath = $null
-$script:VmrunChecked = $false
-
 function Resolve-Vmrun {
-  if ($script:VmrunChecked) { return $script:VmrunPath }
-  $script:VmrunChecked = $true
   $c = @(
     "C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe",
     "C:\Program Files\VMware\VMware Workstation\vmrun.exe"
   )
-  foreach ($p in $c) {
-    if (Test-Path $p) {
-      $script:VmrunPath = $p
-      break
-    }
-  }
-  if (-not $script:VmrunPath) {
-    Write-Warning "vmrun.exe not found; VMware operations will be skipped."
-  }
-  return $script:VmrunPath
+  foreach ($p in $c) { if (Test-Path $p) { return $p } }
+  Write-Warning "vmrun.exe not found; VMware operations will be skipped."
+  return $null
 }
 
 function Import-DotEnv([string]$Path = ".env") {

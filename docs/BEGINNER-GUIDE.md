@@ -74,11 +74,11 @@ pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000-Pre-
 pwsh -File .\scripts\standalone-installer.ps1 -RepoDir "D:\SOC-9000" -InstallDir "D:\Labs\SOC-9000-Pre-Install"
 ```
 
-You can also build a self-contained installer script with embedded prerequisites using the build script:
+You can also build a self-contained `.exe` using the build script:
 
 ```powershell
-pwsh -File .\scripts\build-installer.ps1
-# This produces SOC-9000-installer.ps1 in the repo root.  Run it with PowerShell to start.
+pwsh -File .\scripts\build-standalone-exe.ps1
+# This produces SOC-9000-installer.exe in the repo root.  Double-click it to start.
 ```
 
 ---

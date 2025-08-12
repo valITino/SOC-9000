@@ -19,16 +19,22 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
 
+      - name: Install PS2EXE
+        shell: pwsh
+        run: |
+          Install-Module PS2EXE -Scope CurrentUser -Force
+          Get-Module -ListAvailable PS2EXE | Format-List Name,Version,Path
+
       - name: Smoke test (no network, no winget)
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
 
-      - name: Build installer script
+      - name: Build EXE
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-standalone-exe.ps1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: soc-9000-installer
-          path: SOC-9000-installer.ps1
+          path: SOC-9000-installer.exe

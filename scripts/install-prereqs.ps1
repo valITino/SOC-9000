@@ -10,8 +10,8 @@ $ErrorActionPreference = 'Stop'
 
 $winget = Get-Command winget -ErrorAction SilentlyContinue
 if (-not $winget) {
-    Write-Error "winget is not installed or not in PATH. Cannot install prerequisites."
-    exit 1
+    Write-Warning "winget is not installed or not in PATH. Skipping prerequisite installation."
+    return
 }
 
 $failed = $false
@@ -57,4 +57,3 @@ if ($failed) {
 
 Write-Host "Prerequisite installation complete." -ForegroundColor Green
 exit 0
-

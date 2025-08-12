@@ -65,7 +65,7 @@ function Get-ProjectRoot {
 $ProjectRoot = Get-ProjectRoot
 $ScriptsDir  = Join-Path $ProjectRoot 'scripts'
 
-# Embedded prerequisite installer populated during build
+# Embedded prerequisite installer populated during EXE build
 $EmbeddedPrereqs = @'
 __INSTALL_PREREQS_EMBEDDED__
 '@
@@ -132,8 +132,7 @@ if (-not $SkipPrereqs) {
                 try {
                     Invoke-PowerShellScript -ScriptPath $prereqPath
                 } catch {
-                    Write-Error "Prerequisite installation script failed. Aborting."
-                    exit 1
+                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
                 }
             } elseif ($EmbeddedPrereqs.Trim()) {
                 $tempPrereq = Join-Path ([System.IO.Path]::GetTempPath()) 'install-prereqs.ps1'
@@ -141,8 +140,7 @@ if (-not $SkipPrereqs) {
                 try {
                     Invoke-PowerShellScript -ScriptPath $tempPrereq
                 } catch {
-                    Write-Error "Prerequisite installation script failed. Aborting."
-                    exit 1
+                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
                 }
             } else {
                 Write-Warning "Prerequisite script not found at $prereqPath. Skipping prerequisite installation."
@@ -209,7 +207,7 @@ if (-not $SkipIsoDownload) {
     if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
-                Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+        Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
     }
 }
 
