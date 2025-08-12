@@ -8,11 +8,12 @@ function Resolve-Vmrun {
     "C:\Program Files\VMware\VMware Workstation\vmrun.exe"
   )
   foreach ($p in $c) { if (Test-Path $p) { return $p } }
-  throw "vmrun.exe not found."
+  Write-Warning "vmrun.exe not found; VMware operations will be skipped."
+  return $null
 }
 
 function Import-DotEnv([string]$Path = ".env") {
-  if (!(Test-Path $Path)) { throw ".env not found at $Path. Run 'make init' first." }
+  if (!(Test-Path $Path)) { throw ".env not found at $Path. Copy .env.example to .env first." }
   $lines = Get-Content $Path | Where-Object { $_ -and $_ -notmatch '^\s*#' }
   foreach ($l in $lines) {
     if ($l -match '^\s*([^=]+)=(.*)$') {
@@ -26,6 +27,12 @@ function Assert-Path([string]$p, [string]$why) {
 }
 
 function Test-VMwareNetworks {
+  if (-not (Resolve-Vmrun)) { return }
+  $getNetAdapter = Get-Command Get-NetAdapter -ErrorAction SilentlyContinue
+  if (-not $getNetAdapter) {
+    Write-Warning "Get-NetAdapter cmdlet missing; skipping network check."
+    return
+  }
   $need = @($env:VMNET_WAN,$env:VMNET_MGMT,$env:VMNET_SOC,$env:VMNET_VICTIM,$env:VMNET_RED)
   $have = (Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name)
   $miss = $need | ? { $_ -notin $have }

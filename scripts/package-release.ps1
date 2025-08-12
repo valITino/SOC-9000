@@ -7,8 +7,6 @@
 
     Run this from the repository root:
         pwsh -File .\scripts\package-release.ps1
-    or via the Makefile:
-        make package
 #>
 [CmdletBinding()] param()
 Set-StrictMode -Version Latest

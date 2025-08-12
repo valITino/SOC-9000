@@ -103,13 +103,19 @@ function Invoke-PowerShellScript {
         [Parameter(Mandatory)] [string]$ScriptPath,
         [string[]]$Arguments = @()
     )
+    $exit = 0
     if (Get-Command pwsh -ErrorAction SilentlyContinue) {
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+        $exit = $LASTEXITCODE
     } elseif (Get-Command powershell -ErrorAction SilentlyContinue) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+        $exit = $LASTEXITCODE
     } else {
         Write-Error "Neither pwsh nor powershell is available to run $ScriptPath. Please install PowerShell."
         exit 1
+    }
+    if ($exit -ne 0 -and $exit -ne 3010) {
+        throw "Script $ScriptPath exited with code $exit"
     }
 }
 
@@ -145,6 +151,8 @@ if (-not $SkipPrereqs) {
         }
     }
 }
+
+Test-Git
 
 # Directories
 if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }

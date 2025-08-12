@@ -59,7 +59,8 @@ pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, teleme
 pwsh -File .\scripts\lab-status.ps1
 ```
 
-Before building the installer EXE, ensure PowerShell 7 is installed:
+Before building the installer EXE, ensure Git and PowerShell 7 are installed:
+
 
 ```powershell
 pwsh -File .\scripts\install-prereqs.ps1
@@ -193,7 +194,7 @@ Our automation reassigns LAN to 172.22.10.1 during the config import.
 
 ### D. Continue the automation
 
-Return to your PowerShell window (where `make up-all` paused) and press Enter.
+Return to your PowerShell window (where `lab-up.ps1` paused) and press Enter.
 The playbooks will SSH in, import config (interfaces, DHCP, rules, syslog),
 and reboot pfSense automatically.
 
@@ -236,14 +237,14 @@ sudo apt update && sudo apt -y install ansible git jq curl
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
-make init
+Copy-Item .env.example .env
 # Edit .env to match your ISO filenames & network names if needed
 ```
 
 ### Bring everything up (will pause for pfSense install)
 
 ```powershell
-make up-all
+pwsh -File .\scripts\lab-up.ps1
 ```
 
 ### pfSense (manual, 3 mins)
@@ -277,10 +278,10 @@ If names fail: run `scripts\hosts-refresh.ps1` as Admin.
 
 ### Useful commands
 
-- `make status`     # show IPs/URLs
-- `make backup`     # snapshot state + PV tarball (`E:\SOC-9000\backups`)
-- `make smoke`      # reachability check
-- `make reset`      # soft reset (reapply apps)
-- `make reset-hard` # also wipes PV data on ContainerHost
-- `make down-all`   # stop VMs
+- `pwsh -File scripts/lab-status.ps1`      # show IPs/URLs
+- `pwsh -File scripts/backup-run.ps1`      # snapshot state + PV tarball (`E:\SOC-9000\backups`)
+- `pwsh -File scripts/smoke-test.ps1`      # reachability check
+- `pwsh -File scripts/reset-lab.ps1`       # soft reset (reapply apps)
+- `pwsh -File scripts/reset-lab.ps1 -Hard` # also wipes PV data on ContainerHost
+- `pwsh -File scripts/lab-down.ps1`        # stop VMs
 

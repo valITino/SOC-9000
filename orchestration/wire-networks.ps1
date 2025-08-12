@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Load-Env($path=".env"){
-  if(!(Test-Path $path)){ throw ".env not found. Run make init" }
+  if(!(Test-Path $path)){ throw ".env not found. Copy .env.example to .env first." }
   Get-Content $path | ? {$_ -and $_ -notmatch '^\s*#'} | % {
     if ($_ -match '^\s*([^=]+)=(.*)$'){
       $name = $matches[1].Trim()
