@@ -48,7 +48,7 @@ prereqs:
 
 # Build an executable version of the installer (requires PS2EXE).  Use Windows PowerShell as a fallback
 build-exe:
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1
+	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build-standalone-exe.ps1
 
 # Install prerequisites and build the EXE in one step
 install-all:

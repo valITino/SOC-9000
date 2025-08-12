@@ -1,10 +1,10 @@
 # SOC-9000 - standalone-installer.ps1
 <#
-    One‑click installation for SOC‑9000. Clones the repository, downloads ISOs,
-    and launches lab bring‑up (`make up-all`). Run **as Administrator**.
+    One-click installation for SOC-9000. Clones the repository, downloads ISOs,
+    and launches lab bring-up (`make up-all`). Run **as Administrator**.
     Compatible with Windows PowerShell 5.1 and PowerShell 7.
 #>
-
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "", Justification="User-facing colored output")]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$InstallDir = "E:\\SOC-9000-Pre-Install",
@@ -19,6 +19,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Determine if running on Windows
+if (Test-Path variable:IsWindows) {
+    $IsWindowsOS = $IsWindows
+} else {
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        $IsWindowsOS = $true
+    } elseif ($PSVersionTable.Platform) {
+        $IsWindowsOS = $PSVersionTable.Platform -eq 'Win32NT'
+    } else {
+        $IsWindowsOS = $true
+    }
+}
+
 function Get-ProjectRoot {
     try {
         if ($script:PSScriptRoot) {
@@ -29,7 +42,9 @@ function Get-ProjectRoot {
                 return $script:PSScriptRoot
             }
         }
-    } catch { }
+    } catch {
+        Write-Verbose $_
+    }
 
     $def = $MyInvocation.MyCommand.Definition
     if ($def -and (Test-Path $def)) {
@@ -50,8 +65,8 @@ function Get-ProjectRoot {
 $ProjectRoot = Get-ProjectRoot
 $ScriptsDir  = Join-Path $ProjectRoot 'scripts'
 
-function Require-Administrator {
-    if ($IsWindows) {
+function Test-Administrator {
+    if ($IsWindowsOS) {
         $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal   = New-Object Security.Principal.WindowsPrincipal($currentUser)
         if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -63,20 +78,20 @@ function Require-Administrator {
     }
 }
 
-function Ensure-Git {
+function Test-Git {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Error "Git is not installed or not in PATH. Please install Git and retry."
         exit 1
     }
 }
 
-function Ensure-Make {
+function Test-Make {
     if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
         Write-Warning "GNU Make was not found after prerequisite installation."
     }
 }
 
-function Ensure-Packer {
+function Test-Packer {
     if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
         Write-Warning "HashiCorp Packer was not found. Lab bring-up cannot proceed."
         return $false
@@ -84,7 +99,7 @@ function Ensure-Packer {
     return $true
 }
 
-function Run-PowerShellScript {
+function Invoke-PowerShellScript {
     param(
         [Parameter(Mandatory)] [string]$ScriptPath,
         [string[]]$Arguments = @()
@@ -100,17 +115,17 @@ function Run-PowerShellScript {
 }
 
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
-Require-Administrator
-Ensure-Git
+Test-Administrator
+    Test-Git
 
 # Prerequisites
 if (-not $SkipPrereqs) {
     if ($PSCmdlet.ShouldProcess("Install prerequisites")) {
-        if ($IsWindows) {
+        if ($IsWindowsOS) {
             try {
                 Write-Host "Checking prerequisites..." -ForegroundColor Cyan
                 $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
-                Run-PowerShellScript -ScriptPath $prereqPath
+                Invoke-PowerShellScript -ScriptPath $prereqPath
             } catch {
                 Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
             }
@@ -119,7 +134,7 @@ if (-not $SkipPrereqs) {
         }
     }
 }
-Ensure-Make
+    Test-Make
 
 # Directories
 if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
@@ -128,7 +143,7 @@ if (-not (Test-Path $RepoDir))    { New-Item -ItemType Directory -Path $RepoDir 
 $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
 $RepoDir    = [System.IO.Path]::GetFullPath($RepoDir)
 
-Write-Host "Pre‑install directory: $InstallDir" -ForegroundColor Cyan
+Write-Host "Pre-install directory: $InstallDir" -ForegroundColor Cyan
 Write-Host "Repository directory: $RepoDir"    -ForegroundColor Cyan
 
 # Clone or update repo
@@ -178,7 +193,7 @@ if (-not $SkipIsoDownload) {
     if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
-        Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+                Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
     }
 }
 
@@ -201,12 +216,12 @@ if (Test-Path $envPath) {
 
 # Bring up lab
 if (-not $SkipBringUp) {
-    if (Ensure-Packer) {
+    if (Test-Packer) {
         if ($PSCmdlet.ShouldProcess("Run 'make up-all'")) {
             try { make up-all }
             catch {
                 Write-Warning "'make up-all' failed. Attempting to run orchestration script directly..."
-                Run-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
+                Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
             }
         }
     } else {
