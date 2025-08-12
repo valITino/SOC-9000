@@ -22,6 +22,25 @@ if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     } catch {
         Write-Warning "Failed to install GNU Make via winget. You may need to install it manually."
     }
+    $makeDir = Join-Path ${env:ProgramFiles(x86)} 'GnuWin32\\bin'
+    if (-not (Test-Path $makeDir)) {
+        $makeDir = Join-Path ${env:ProgramFiles} 'GnuWin32\\bin'
+    }
+    if (Test-Path $makeDir) {
+        if (-not ($Env:Path.Split(';') -contains $makeDir)) {
+            $Env:Path = "$Env:Path;$makeDir"
+            try {
+                [Environment]::SetEnvironmentVariable('Path', $Env:Path, 'Machine')
+            } catch {
+                Write-Warning "Failed to persist PATH update. GNU Make may not be available in new shells."
+            }
+        }
+    }
+    if (Get-Command make -ErrorAction SilentlyContinue) {
+        Write-Host "GNU Make installed." -ForegroundColor Green
+    } else {
+        Write-Warning "GNU Make is still not available. You may need to restart PowerShell or install it manually."
+    }
 } else {
     Write-Host "GNU Make already installed." -ForegroundColor Green
 }
