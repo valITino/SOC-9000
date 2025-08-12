@@ -1,0 +1,6 @@
+{
+  "name": "soc-9000",
+  "version": "1.0.0",
+  "description": "Helper manifest for npm audit; no runtime deps",
+  "license": "ISC"
+}
