@@ -12,11 +12,11 @@
 
     git clone <repo-url> E:\SOC-9000\SOC-9000
     cd E:\SOC-9000\SOC-9000
-    make init # edit .env
+    Copy-Item .env.example .env # edit .env
 
 **Bring up everything (will pause for pfSense):**
 
-    make up-all
+    pwsh -File .\scripts\lab-up.ps1
 
 **pfSense (manual):** Create VM → 5 NICs (WAN=VMnet8, MGMT=VMnet20, SOC=VMnet21, VICTIM=VMnet22, RED=VMnet23) → Install → Reboot → Console **14) Enable SSH** → back to PowerShell, press **Enter**.
 
@@ -36,6 +36,6 @@ Nessus `https://nessus.lab.local:8834`
 
 **Daily:**
 - Kali shell: `kubectl -n red exec -it deploy/kali-cli -- bash`
-- Backup: `make backup`
-- Reset: `make reset` (or `make reset-hard`)
-- Stop VMs: `make down-all`
+- Backup: `pwsh -File scripts/backup-run.ps1`
+- Reset: `pwsh -File scripts/reset-lab.ps1` (add `-Hard` for full reset)
+- Stop VMs: `pwsh -File scripts/lab-down.ps1`
