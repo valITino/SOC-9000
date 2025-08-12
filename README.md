@@ -77,6 +77,14 @@ make package          # packages SOC-9000-starter.zip and SHA256SUMS.txt for rel
 
 The `install-all` target combines prerequisite installation and EXE build in one step.
 
+### Smoke test
+
+Validate that script paths resolve correctly without any network activity:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+```
+
 During `make up-all` you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
 
 ### One‑click installation (end‑user path)

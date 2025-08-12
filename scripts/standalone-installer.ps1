@@ -1,32 +1,47 @@
 # SOC-9000 - standalone-installer.ps1
 <#
-    One‑click installation for SOC‑9000. Clones the repository into a chosen directory,
-    downloads required ISOs, and launches lab bring‑up (`make up-all`).
-
-    Run from a PowerShell window **as Administrator**.
-
-    Examples:
-        # install to the default path (E:\SOC-9000-Pre-Install)
-        pwsh -File .\scripts\standalone-installer.ps1
-
-        # install to a custom path
-        pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000"
+    One‑click installation for SOC‑9000. Clones the repository, downloads ISOs,
+    and launches lab bring‑up (`make up-all`). Run **as Administrator**.
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    # Where prerequisite files (ISOs, artifacts, temp) will live. Defaults to E:\SOC-9000-Pre-Install.
     [string]$InstallDir = "E:\\SOC-9000-Pre-Install",
-
-    # Where to clone the SOC‑9000 repository. Defaults to E:\SOC-9000.
-    [string]$RepoDir    = "E:\\SOC-9000"
+    [string]$RepoDir    = "E:\\SOC-9000",
+    [switch]$SkipPrereqs,
+    [switch]$SkipClone,
+    [switch]$SkipIsoDownload,
+    [switch]$SkipBringUp
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Script root for locating sibling helper scripts regardless of CWD
-$ScriptRoot = Split-Path -Parent $PSCommandPath
+# --- Robust project root detection (works for PS1 and PS2EXE .exe) ---
+function Get-ProjectRoot {
+    # 1) Prefer $PSScriptRoot when present (PS1)
+    if ($script:PSScriptRoot) {
+        $leaf = Split-Path -Leaf $script:PSScriptRoot
+        if ($leaf -ieq 'scripts') {
+            return (Split-Path -Parent $script:PSScriptRoot)   # repo root
+        } else {
+            return $script:PSScriptRoot
+        }
+    }
+    # 2) $MyInvocation fallback
+    $def = $MyInvocation.MyCommand.Definition
+    if ($def -and (Test-Path $def)) {
+        $dir = Split-Path -Parent $def
+        $leaf = Split-Path -Leaf $dir
+        return ($leaf -ieq 'scripts') ? (Split-Path -Parent $dir) : $dir
+    }
+    # 3) EXE location
+    $exeDir = [System.IO.Path]::GetDirectoryName([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName)
+    return $exeDir
+}
+
+$ProjectRoot = Get-ProjectRoot
+$ScriptsDir  = Join-Path $ProjectRoot 'scripts'
 
 function Require-Administrator {
     if ($IsWindows) {
@@ -77,22 +92,25 @@ function Run-PowerShellScript {
     }
 }
 
-# Entry point
-Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
+Write-Output "== SOC-9000 Standalone Installer =="
 Require-Administrator
 Ensure-Git
 
-# Install prerequisites (GNU Make and PowerShell 7)
-if ($IsWindows) {
-    try {
-        Write-Host "Checking prerequisites..." -ForegroundColor Cyan
-        $prereqPath = Join-Path $ScriptRoot 'install-prereqs.ps1'
-        Run-PowerShellScript -ScriptPath $prereqPath
-    } catch {
-        Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+# Prereqs (use absolute path under repo root, works for EXE or PS1)
+if (-not $SkipPrereqs) {
+    if ($PSCmdlet.ShouldProcess("Install prerequisites")) {
+        if ($IsWindows) {
+            try {
+                Write-Output "Checking prerequisites..."
+                $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
+                Run-PowerShellScript -ScriptPath $prereqPath
+            } catch {
+                Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+            }
+        } else {
+            Write-Warning "Non-Windows host detected; skipping prerequisite installation."
+        }
     }
-} else {
-    Write-Warning "Non-Windows host detected; skipping prerequisite installation."
 }
 Ensure-Make
 
@@ -103,92 +121,98 @@ if (-not (Test-Path $RepoDir))    { New-Item -ItemType Directory -Path $RepoDir 
 $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
 $RepoDir    = [System.IO.Path]::GetFullPath($RepoDir)
 
-Write-Host "Pre‑install directory: $InstallDir" -ForegroundColor Cyan
-Write-Host "Repository directory: $RepoDir"    -ForegroundColor Cyan
+Write-Output "Pre‑install directory: $InstallDir"
+Write-Output "Repository directory: $RepoDir"
 
 # Clone or update repository
-$gitDir = Join-Path $RepoDir '.git'
-if (Test-Path $gitDir) {
-    Write-Host "SOC-9000 repository already exists. Pulling latest changes..." -ForegroundColor Green
-    Push-Location $RepoDir
-    try {
-        git pull --ff-only
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository."
+if (-not $SkipClone) {
+    if ($PSCmdlet.ShouldProcess("Clone or update repo")) {
+        $gitDir = Join-Path $RepoDir '.git'
+        if (Test-Path $gitDir) {
+            Write-Output "SOC-9000 repository already exists. Pulling latest changes..."
+            Push-Location $RepoDir
+            try {
+                git pull --ff-only
+                if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
+            } catch {
+                Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
+            } finally {
+                Pop-Location
+            }
+        } else {
+            if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
+                Write-Error "Repository directory $RepoDir exists and is not a Git repository."
+                exit 1
+            }
+            Write-Output "Cloning SOC-9000 repository..."
+            try {
+                git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
+                if ($LASTEXITCODE -ne 0) { Write-Error "git clone returned exit code $LASTEXITCODE."; exit 1 }
+            } catch {
+                Write-Error "Failed to clone repository: $_"
+                exit 1
+            }
         }
-    } catch {
-        Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
-    } finally {
-        Pop-Location
-    }
-} else {
-    # If directory exists but is not a git repo, ensure it's empty
-    if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
-        Write-Error "Repository directory $RepoDir exists and is not a Git repository."
-        exit 1
-    }
-    Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
-    try {
-        git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "git clone returned exit code $LASTEXITCODE."
-            exit 1
-        }
-    } catch {
-        Write-Error "Failed to clone repository: $_"
-        exit 1
     }
 }
 
-# Work from the repo root for subsequent operations
+# Operate from the repo root
 Set-Location $RepoDir
 
-# Initialize .env if missing
-if (-not (Test-Path ".env")) {
-    Write-Host "Initializing .env..." -ForegroundColor Green
+# Initialize .env if missing and Makefile exists
+$makefile = Join-Path $RepoDir 'Makefile'
+if ((Test-Path $makefile) -and -not (Test-Path ".env")) {
+    Write-Output "Initializing .env..."
     try {
         make init
+        if ($LASTEXITCODE -ne 0) { Write-Warning "'make init' exited with code $LASTEXITCODE. Ensure GNU Make is installed or create .env manually." }
     } catch {
         Write-Warning "Could not run 'make init'. Ensure GNU Make is installed or create .env manually."
     }
 }
 
-# Download ISOs to the pre-install folder
-Write-Host "Downloading required ISOs..." -ForegroundColor Cyan
+# Download ISOs to the pre-install folder (use absolute helper path)
 $isoDir = Join-Path $InstallDir 'isos'
-if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
-
-$downloadIsos = Join-Path $ScriptRoot 'download-isos.ps1'
-Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+if (-not $SkipIsoDownload) {
+    if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
+        Write-Output "Downloading required ISOs..."
+        if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
+        $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
+        Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+    }
+}
 
 # Update .env with paths
 $envPath = Join-Path $RepoDir '.env'
 if (Test-Path $envPath) {
-    Write-Host "Updating .env with RepoDir and InstallDir paths..." -ForegroundColor Cyan
+    Write-Output "Updating .env with RepoDir and InstallDir paths..."
     $lines   = Get-Content $envPath
     $updated = @()
     foreach ($line in $lines) {
-        if     ($line -match '^(LAB_ROOT)=')       { $updated += "LAB_ROOT=$RepoDir" }
-        elseif ($line -match '^(REPO_ROOT)=')      { $updated += "REPO_ROOT=$RepoDir" }
-        elseif ($line -match '^(ISO_DIR)=')        { $updated += "ISO_DIR=$isoDir" }
-        elseif ($line -match '^(ARTIFACTS_DIR)=')  { $updated += "ARTIFACTS_DIR=" + (Join-Path $InstallDir 'artifacts') }
-        elseif ($line -match '^(TEMP_DIR)=')       { $updated += "TEMP_DIR="      + (Join-Path $InstallDir 'temp') }
-        else                                       { $updated += $line }
+        if     ($line -match '^(LAB_ROOT)=')      { $updated += "LAB_ROOT=$RepoDir" }
+        elseif ($line -match '^(REPO_ROOT)=')     { $updated += "REPO_ROOT=$RepoDir" }
+        elseif ($line -match '^(ISO_DIR)=')       { $updated += "ISO_DIR=$isoDir" }
+        elseif ($line -match '^(ARTIFACTS_DIR)=') { $updated += "ARTIFACTS_DIR=" + (Join-Path $InstallDir 'artifacts') }
+        elseif ($line -match '^(TEMP_DIR)=')      { $updated += "TEMP_DIR="      + (Join-Path $InstallDir 'temp') }
+        else                                      { $updated += $line }
     }
     $updated | Set-Content $envPath -Encoding ASCII
 }
 
 # Bring up the lab
-if (Ensure-Packer) {
-    Write-Host "Launching lab bring-up (this may take a while)..." -ForegroundColor Cyan
-    try {
-        make up-all
-    } catch {
-        Write-Warning "'make up-all' failed. Attempting to run the orchestration script directly..."
-        Run-PowerShellScript -ScriptPath (Join-Path $ScriptRoot 'lab-up.ps1')
+if (-not $SkipBringUp) {
+    if ($PSCmdlet.ShouldProcess("Run make up-all")) {
+        if (Ensure-Packer) {
+            Write-Output "Launching lab bring-up (this may take a while)..."
+            try { make up-all }
+            catch {
+                Write-Warning "'make up-all' failed. Attempting to run the orchestration script directly..."
+                Run-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
+            }
+        } else {
+            Write-Warning "Skipping lab bring-up because Packer is missing."
+        }
     }
-} else {
-    Write-Warning "Skipping lab bring-up because Packer is missing."
 }
 
-Write-Host "SOC-9000 installation complete." -ForegroundColor Green
+Write-Output "SOC-9000 installation complete."

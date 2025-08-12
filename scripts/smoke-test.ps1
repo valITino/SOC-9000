@@ -1,29 +1,32 @@
-# Basic reachability check for lab URLs (ignores TLS errors)
-$ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
-[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+[CmdletBinding()]
+param()
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-$targets = @(
-  "https://portainer.lab.local:9443",
-  "https://wazuh.lab.local",
-  "https://thehive.lab.local",
-  "https://cortex.lab.local",
-  "https://caldera.lab.local",
-  "https://dvwa.lab.local",
-  "https://nessus.lab.local:8834"
-)
-
-$results = foreach($t in $targets){
-  try {
-    $r = Invoke-WebRequest -Uri $t -Method Head -TimeoutSec 8 -UseBasicParsing
-    [pscustomobject]@{ URL=$t; Status=$r.StatusCode; OK=$true }
-  } catch {
-    $status = if ($_.Exception.PSObject.Properties['Response']) {
-      $_.Exception.Response.StatusCode.value__
-    } else {
-      $_.Exception.Message
+function Get-ProjectRoot {
+    if ($script:PSScriptRoot) {
+        $leaf = Split-Path -Leaf $script:PSScriptRoot
+        if ($leaf -ieq 'scripts') { return (Split-Path -Parent $script:PSScriptRoot) }
+        return $script:PSScriptRoot
     }
-    [pscustomobject]@{ URL=$t; Status=$status; OK=$false }
-  }
+    $def = $MyInvocation.MyCommand.Definition
+    if ($def -and (Test-Path $def)) {
+        $dir = Split-Path -Parent $def
+        $leaf = Split-Path -Leaf $dir
+        return ($leaf -ieq 'scripts') ? (Split-Path -Parent $dir) : $dir
+    }
+    $exeDir = [System.IO.Path]::GetDirectoryName([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName)
+    return $exeDir
 }
-$results | Format-Table -AutoSize
 
+$ProjectRoot = Get-ProjectRoot
+$ScriptsDir  = Join-Path $ProjectRoot 'scripts'
+
+Write-Output "ProjectRoot: $ProjectRoot"
+Write-Output "ScriptsDir : $ScriptsDir"
+
+if (-not (Test-Path $ScriptsDir)) {
+    throw "Scripts dir not found at $ScriptsDir"
+}
+
+Write-Output "Smoke test OK."
