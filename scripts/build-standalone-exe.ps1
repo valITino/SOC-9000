@@ -35,14 +35,29 @@ try {
     exit 1
 }
 $resolvedOutput = [System.IO.Path]::GetFullPath($Output)
+$scriptDir     = Split-Path -Parent $resolvedSource
+$prereqScript  = Join-Path $scriptDir 'install-prereqs.ps1'
+if (-not (Test-Path $prereqScript)) {
+    Write-Error "Prerequisite script not found at '$prereqScript'."
+    exit 1
+}
+
+# Inject prerequisite installer into the source script
+$installerContent = Get-Content -Path $resolvedSource -Raw
+$prereqContent    = Get-Content -Path $prereqScript -Raw
+$embeddedSource   = $installerContent.Replace('__INSTALL_PREREQS_EMBEDDED__', $prereqContent)
+$tempSource       = Join-Path $scriptDir 'standalone-installer-embedded.ps1'
+Set-Content -Path $tempSource -Value $embeddedSource -Encoding UTF8
 
 Ensure-PS2EXE
 
 Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
 try {
-    Invoke-PS2EXE -InputFile $resolvedSource -OutputFile $resolvedOutput -NoConsole
+    Invoke-PS2EXE -InputFile $tempSource -OutputFile $resolvedOutput -NoConsole
     Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
 } catch {
     Write-Error "Compilation failed: $_"
     exit 1
+} finally {
+    Remove-Item -Path $tempSource -ErrorAction SilentlyContinue
 }
