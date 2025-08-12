@@ -23,7 +23,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PS2EXE -Scope CurrentUser -Force
-          Get-Module -ListAvailable PS2EXE
+          Get-Module -ListAvailable PS2EXE | Format-List Name,Version,Path
 
       - name: Smoke test (no network, no winget)
         shell: pwsh

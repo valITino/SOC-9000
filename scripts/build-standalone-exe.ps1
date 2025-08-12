@@ -1,11 +1,7 @@
 # SOC-9000 - build-standalone-exe.ps1
 <#
-    Uses the PS2EXE module to compile the standalone installer script into a single
-    Windows executable. Run this script from the repository root (recommended),
-    or pass a custom -Source and/or -Output.
-
-    Example:
-        pwsh -File .\scripts\build-standalone-exe.ps1
+    Compiles scripts/standalone-installer.ps1 into SOC-9000-installer.exe using PS2EXE.
+    Works on PowerShell 5.1 and PowerShell 7. Run from repo root or pass -Source/-Output.
 #>
 
 [CmdletBinding()]
@@ -17,13 +13,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Install-PS2EXE {
+function Ensure-PS2EXE {
     if (-not (Get-Command Invoke-PS2EXE -ErrorAction SilentlyContinue)) {
-        Write-Output "PS2EXE module not found. Installing..."
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-        try { Install-Module -Name PS2EXE -Scope CurrentUser -Force }
-        catch {
+        Write-Host "PS2EXE module not found. Installing..." -ForegroundColor Yellow
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Install-Module -Name PS2EXE -Scope CurrentUser -Force
+        } catch {
             Write-Error "Failed to install PS2EXE module: $_"
             exit 1
         }
@@ -31,16 +28,20 @@ function Install-PS2EXE {
 }
 
 # Resolve paths (allow relative input)
-try { $resolvedSource = (Resolve-Path -Path $Source).Path }
-catch { Write-Error "Source script not found at '$Source'."; exit 1 }
+try {
+    $resolvedSource = (Resolve-Path -Path $Source).Path
+} catch {
+    Write-Error "Source script not found at '$Source'."
+    exit 1
+}
 $resolvedOutput = [System.IO.Path]::GetFullPath($Output)
 
-Install-PS2EXE
+Ensure-PS2EXE
 
-Write-Output "Compiling `$resolvedSource` to `$resolvedOutput`..."
+Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
 try {
     Invoke-PS2EXE -InputFile $resolvedSource -OutputFile $resolvedOutput -NoConsole
-    Write-Output "Executable created: $resolvedOutput"
+    Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
 } catch {
     Write-Error "Compilation failed: $_"
     exit 1
