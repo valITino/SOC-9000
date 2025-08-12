@@ -61,7 +61,6 @@ pwsh -File .\scripts\lab-status.ps1
 
 Before building the installer EXE, ensure Git and PowerShell 7 are installed:
 
-
 ```powershell
 pwsh -File .\scripts\install-prereqs.ps1
 ```

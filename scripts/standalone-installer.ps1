@@ -121,7 +121,6 @@ function Invoke-PowerShellScript {
 
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Test-Administrator
-Test-Git
 
 # Prerequisites
 if (-not $SkipPrereqs) {
@@ -171,7 +170,7 @@ if (-not $SkipClone) {
         if (Test-Path $gitDir) {
             Write-Host "SOC-9000 repository already exists. Pulling latest changes..." -ForegroundColor Green
             Push-Location $RepoDir
-            git pull --ff-only --quiet
+            git pull --ff-only --quiet 2>$null
             if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
             Pop-Location
         } else {
@@ -180,7 +179,7 @@ if (-not $SkipClone) {
                 exit 1
             }
             Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
-            git clone --quiet "https://github.com/valITino/SOC-9000.git" $RepoDir
+            git clone --quiet "https://github.com/valITino/SOC-9000.git" $RepoDir 2>$null
             if ($LASTEXITCODE -ne 0) {
                 Write-Error "git clone failed with exit code $LASTEXITCODE."
                 exit 1

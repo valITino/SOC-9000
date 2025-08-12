@@ -1,5 +1,4 @@
 <#
-
     install-prereqs.ps1: Installs Git and PowerShell 7 if they are not already present.
 #>
 

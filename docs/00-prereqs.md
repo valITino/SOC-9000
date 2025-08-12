@@ -53,7 +53,6 @@ From the repo root, run:
 cd E:\SOC-9000\SOC-9000
 pwsh -File .\scripts\install-prereqs.ps1
 ```
-
 The script checks if `make` and `pwsh` are available on your system and installs them via winget when necessary.
 If winget is missing, the script will warn and exit without making changes. The standalone installer executable bundles this script so prerequisites are handled automatically.
 The standalone installer executable bundles this script so prerequisites are handled automatically.
