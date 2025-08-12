@@ -1,14 +1,18 @@
 ---
 - name: Download Wazuh agent MSI
   win_get_url:
-    url: "{{ lookup('env','WAZUH_AGENT_MSI_URL') | default('https://packages.wazuh.com/4.x/windows/wazuh-agent-4.7.5-1.msi') }}"
+    url: >-
+      {{ lookup('env','WAZUH_AGENT_MSI_URL')
+         | default('https://packages.wazuh.com/4.x/windows/wazuh-agent-4.7.5-1.msi') }}
     dest: C:\\Windows\\Temp\\wazuh-agent.msi
 
 - name: Install Wazuh agent (point to manager LB)
   win_package:
     path: C:\\Windows\\Temp\\wazuh-agent.msi
     product_id: '{00000000-0000-0000-0000-0000WAZUHAGT}'
-    arguments: WAZUH_MANAGER="{{ lookup('env','WAZUH_MANAGER_LB_IP') | default('172.22.10.62') }}" WAZUH_REGISTRATION_SERVER="{{ lookup('env','WAZUH_MANAGER_LB_IP') | default('172.22.10.62') }}"
+    arguments: >-
+      WAZUH_MANAGER="{{ lookup('env','WAZUH_MANAGER_LB_IP') | default('172.22.10.62') }}"
+      WAZUH_REGISTRATION_SERVER="{{ lookup('env','WAZUH_MANAGER_LB_IP') | default('172.22.10.62') }}"
     state: present
 
 - name: Start Wazuh agent
