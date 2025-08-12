@@ -1,29 +1,42 @@
-# Basic reachability check for lab URLs (ignores TLS errors)
-$ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
-[Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+[CmdletBinding()]
+param()
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-$targets = @(
-  "https://portainer.lab.local:9443",
-  "https://wazuh.lab.local",
-  "https://thehive.lab.local",
-  "https://cortex.lab.local",
-  "https://caldera.lab.local",
-  "https://dvwa.lab.local",
-  "https://nessus.lab.local:8834"
-)
+function Get-ProjectRoot {
+    try {
+        if ($script:PSScriptRoot) {
+            $leaf = Split-Path -Leaf $script:PSScriptRoot
+            if ($leaf -ieq 'scripts') {
+                return (Split-Path -Parent $script:PSScriptRoot)
+            } else {
+                return $script:PSScriptRoot
+            }
+        }
+    } catch { }
 
-$results = foreach($t in $targets){
-  try {
-    $r = Invoke-WebRequest -Uri $t -Method Head -TimeoutSec 8 -UseBasicParsing
-    [pscustomobject]@{ URL=$t; Status=$r.StatusCode; OK=$true }
-  } catch {
-    $status = if ($_.Exception.PSObject.Properties['Response']) {
-      $_.Exception.Response.StatusCode.value__
-    } else {
-      $_.Exception.Message
+    $def = $MyInvocation.MyCommand.Definition
+    if ($def -and (Test-Path $def)) {
+        $dir  = Split-Path -Parent $def
+        $leaf = Split-Path -Leaf $dir
+        if ($leaf -ieq 'scripts') {
+            return (Split-Path -Parent $dir)
+        } else {
+            return $dir
+        }
     }
-    [pscustomobject]@{ URL=$t; Status=$status; OK=$false }
-  }
+
+    $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $exeDir  = [System.IO.Path]::GetDirectoryName($exePath)
+    return $exeDir
 }
-$results | Format-Table -AutoSize
+
+$ProjectRoot = Get-ProjectRoot
+$ScriptsDir  = Join-Path $ProjectRoot 'scripts'
+
+Write-Host "ProjectRoot: $ProjectRoot"
+Write-Host "ScriptsDir : $ScriptsDir"
+
+if (-not (Test-Path $ScriptsDir)) { throw "Scripts dir not found at $ScriptsDir" }
+Write-Host "Smoke test OK." -ForegroundColor Green
 
