@@ -192,6 +192,8 @@ if (-not $SkipClone) {
 
 # Operate from repo root
 Set-Location $RepoDir
+$ProjectRoot = $RepoDir
+$ScriptsDir  = Join-Path $ProjectRoot 'scripts'
 
 # Initialize .env if missing
 if (-not (Test-Path ".env")) {
