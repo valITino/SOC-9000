@@ -122,12 +122,16 @@ Test-Administrator
 if (-not $SkipPrereqs) {
     if ($PSCmdlet.ShouldProcess("Install prerequisites")) {
         if ($IsWindowsOS) {
-            try {
-                Write-Host "Checking prerequisites..." -ForegroundColor Cyan
-                $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
-                Invoke-PowerShellScript -ScriptPath $prereqPath
-            } catch {
-                Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+            Write-Host "Checking prerequisites..." -ForegroundColor Cyan
+            $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
+            if (Test-Path $prereqPath) {
+                try {
+                    Invoke-PowerShellScript -ScriptPath $prereqPath
+                } catch {
+                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+                }
+            } else {
+                Write-Warning "Prerequisite script not found at $prereqPath. Skipping prerequisite installation."
             }
         } else {
             Write-Warning "Non-Windows host detected; skipping prerequisite installation."
@@ -153,25 +157,18 @@ if (-not $SkipClone) {
         if (Test-Path $gitDir) {
             Write-Host "SOC-9000 repository already exists. Pulling latest changes..." -ForegroundColor Green
             Push-Location $RepoDir
-            try {
-                git pull --ff-only
-                if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
-            } catch {
-                Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
-            } finally {
-                Pop-Location
-            }
+            git pull --ff-only --quiet
+            if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
+            Pop-Location
         } else {
             if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
                 Write-Error "Repository directory $RepoDir exists and is not a Git repository."
                 exit 1
             }
             Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
-            try {
-                git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
-                if ($LASTEXITCODE -ne 0) { Write-Error "git clone returned exit code $LASTEXITCODE."; exit 1 }
-            } catch {
-                Write-Error "Failed to clone repository: $_"
+            git clone --quiet "https://github.com/valITino/SOC-9000.git" $RepoDir
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "git clone failed with exit code $LASTEXITCODE."
                 exit 1
             }
         }
