@@ -1,7 +1,7 @@
 # SOC-9000 - standalone-installer.ps1
 <#
     One-click installation for SOC-9000. Clones the repository, downloads ISOs,
-    and launches lab bring-up (`make up-all`). Run **as Administrator**.
+    and launches lab bring-up. Run **as Administrator**.
     Compatible with Windows PowerShell 5.1 and PowerShell 7.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingWriteHost", "", Justification="User-facing colored output")]
@@ -65,6 +65,11 @@ function Get-ProjectRoot {
 $ProjectRoot = Get-ProjectRoot
 $ScriptsDir  = Join-Path $ProjectRoot 'scripts'
 
+# Embedded prerequisite installer populated during build
+$EmbeddedPrereqs = @'
+__INSTALL_PREREQS_EMBEDDED__
+'@
+
 function Test-Administrator {
     if ($IsWindowsOS) {
         $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -85,12 +90,6 @@ function Test-Git {
     }
 }
 
-function Test-Make {
-    if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
-        Write-Warning "GNU Make was not found after prerequisite installation."
-    }
-}
-
 function Test-Packer {
     if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
         Write-Warning "HashiCorp Packer was not found. Lab bring-up cannot proceed."
@@ -104,37 +103,55 @@ function Invoke-PowerShellScript {
         [Parameter(Mandatory)] [string]$ScriptPath,
         [string[]]$Arguments = @()
     )
+    $exit = 0
     if (Get-Command pwsh -ErrorAction SilentlyContinue) {
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+        $exit = $LASTEXITCODE
     } elseif (Get-Command powershell -ErrorAction SilentlyContinue) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments
+        $exit = $LASTEXITCODE
     } else {
         Write-Error "Neither pwsh nor powershell is available to run $ScriptPath. Please install PowerShell."
         exit 1
+    }
+    if ($exit -ne 0 -and $exit -ne 3010) {
+        throw "Script $ScriptPath exited with code $exit"
     }
 }
 
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Test-Administrator
-    Test-Git
 
 # Prerequisites
 if (-not $SkipPrereqs) {
     if ($PSCmdlet.ShouldProcess("Install prerequisites")) {
         if ($IsWindowsOS) {
-            try {
-                Write-Host "Checking prerequisites..." -ForegroundColor Cyan
-                $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
-                Invoke-PowerShellScript -ScriptPath $prereqPath
-            } catch {
-                Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+            Write-Host "Checking prerequisites..." -ForegroundColor Cyan
+            $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
+            if (Test-Path $prereqPath) {
+                try {
+                    Invoke-PowerShellScript -ScriptPath $prereqPath
+                } catch {
+                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+                }
+            } elseif ($EmbeddedPrereqs.Trim()) {
+                $tempPrereq = Join-Path ([System.IO.Path]::GetTempPath()) 'install-prereqs.ps1'
+                Set-Content -Path $tempPrereq -Value $EmbeddedPrereqs -Encoding UTF8
+                try {
+                    Invoke-PowerShellScript -ScriptPath $tempPrereq
+                } catch {
+                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+                }
+            } else {
+                Write-Warning "Prerequisite script not found at $prereqPath. Skipping prerequisite installation."
             }
         } else {
             Write-Warning "Non-Windows host detected; skipping prerequisite installation."
         }
     }
 }
-    Test-Make
+
+Test-Git
 
 # Directories
 if (-not (Test-Path $InstallDir)) { New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null }
@@ -153,25 +170,18 @@ if (-not $SkipClone) {
         if (Test-Path $gitDir) {
             Write-Host "SOC-9000 repository already exists. Pulling latest changes..." -ForegroundColor Green
             Push-Location $RepoDir
-            try {
-                git pull --ff-only
-                if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
-            } catch {
-                Write-Warning "Failed to pull latest changes. Proceeding with existing repository."
-            } finally {
-                Pop-Location
-            }
+            git pull --ff-only --quiet 2>$null
+            if ($LASTEXITCODE -ne 0) { Write-Warning "git pull returned exit code $LASTEXITCODE. Proceeding with existing repository." }
+            Pop-Location
         } else {
             if ((Get-ChildItem -Path $RepoDir -Force | Measure-Object).Count -gt 0) {
                 Write-Error "Repository directory $RepoDir exists and is not a Git repository."
                 exit 1
             }
             Write-Host "Cloning SOC-9000 repository..." -ForegroundColor Green
-            try {
-                git clone "https://github.com/valITino/SOC-9000.git" $RepoDir
-                if ($LASTEXITCODE -ne 0) { Write-Error "git clone returned exit code $LASTEXITCODE."; exit 1 }
-            } catch {
-                Write-Error "Failed to clone repository: $_"
+            git clone --quiet "https://github.com/valITino/SOC-9000.git" $RepoDir 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "git clone failed with exit code $LASTEXITCODE."
                 exit 1
             }
         }
@@ -183,8 +193,12 @@ Set-Location $RepoDir
 
 # Initialize .env if missing
 if (-not (Test-Path ".env")) {
-    Write-Host "Initializing .env..." -ForegroundColor Green
-    try { make init } catch { Write-Warning "Could not run 'make init'. Ensure GNU Make is installed or create .env manually." }
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env" -Force
+        Write-Host "Created .env from template. Review and update before proceeding." -ForegroundColor Green
+    } else {
+        Write-Warning ".env.example not found; create .env manually."
+    }
 }
 
 # Download ISOs
@@ -217,12 +231,8 @@ if (Test-Path $envPath) {
 # Bring up lab
 if (-not $SkipBringUp) {
     if (Test-Packer) {
-        if ($PSCmdlet.ShouldProcess("Run 'make up-all'")) {
-            try { make up-all }
-            catch {
-                Write-Warning "'make up-all' failed. Attempting to run orchestration script directly..."
-                Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
-            }
+        if ($PSCmdlet.ShouldProcess("Bring up lab")) {
+            Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
         }
     } else {
         Write-Warning "Skipping lab bring-up because Packer is missing."

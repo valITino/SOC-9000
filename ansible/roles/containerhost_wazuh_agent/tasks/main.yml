@@ -2,8 +2,11 @@
 - name: Add Wazuh APT repo
   become: yes
   shell: |
-    curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --dearmor | tee /usr/share/keyrings/wazuh.gpg >/dev/null
-    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | tee /etc/apt/sources.list.d/wazuh.list
+    curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH \
+      | gpg --dearmor \
+      | tee /usr/share/keyrings/wazuh.gpg >/dev/null
+    echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" \
+      | tee /etc/apt/sources.list.d/wazuh.list
   args: { creates: /etc/apt/sources.list.d/wazuh.list }
 
 - name: Install wazuh-agent

@@ -8,5 +8,7 @@
 
 - name: Run agent (bypass TLS validation; lab cert)
   win_shell: |
-    Start-Process -FilePath "C:\\Windows\\Temp\\sandcat.exe" -ArgumentList "-server https://caldera.lab.local -group SOC-9000 -v" -WindowStyle Hidden
+    Start-Process -FilePath "C:\\Windows\\Temp\\sandcat.exe" `
+      -ArgumentList "-server https://caldera.lab.local -group SOC-9000 -v" `
+      -WindowStyle Hidden
   args: { executable: powershell.exe }

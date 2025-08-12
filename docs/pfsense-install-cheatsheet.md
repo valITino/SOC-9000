@@ -26,7 +26,7 @@
 - The repo expects: `.env` → `PFSENSE_ADMIN_USER=admin`, `PFSENSE_ADMIN_PASS=...`.
 
 **Back to automation:**
-- In your PowerShell window (where `make up-all` paused), press **Enter**.
+- In your PowerShell window (where `lab-up.ps1` paused), press **Enter**.
 - Ansible will import config (interfaces, DHCP, firewall rules, remote syslog) and reboot pfSense.
 
 **Final IPs (expected):**
