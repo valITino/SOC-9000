@@ -1,4 +1,5 @@
-SHELL := pwsh
+SHELL := /bin/bash
+PWSH := $(shell command -v pwsh 2>/dev/null || command -v powershell 2>/dev/null)
 
 help:
 	@Write-Host "Targets: init, env, check, up-all, down-all, status"
@@ -11,7 +12,7 @@ env:
 	@Get-Content .env | ? {$_ -and $_ -notmatch ^\s*#}
 
 check:
-	@pwsh -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1 -CheckOnly
+	@if [ -z "$(PWSH)" ]; then echo "PowerShell not found; skipping check target"; else $(PWSH) -NoProfile -ExecutionPolicy Bypass -File orchestration/up.ps1 -CheckOnly; fi
 
 up-all:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/lab-up.ps1
@@ -42,7 +43,7 @@ installer:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/standalone-installer.ps1
 
 
-# Install prerequisites (GNU Make and PowerShell 7) via winget
+# Install prerequisites (Git and PowerShell 7) via winget
 prereqs:
 	@powershell -ExecutionPolicy Bypass -File scripts/install-prereqs.ps1
 

@@ -1,5 +1,5 @@
 <#
-    install-prereqs.ps1: Installs GNU Make and PowerShell 7 if they are not already present.
+    install-prereqs.ps1: Installs Git and PowerShell 7 if they are not already present.
 #>
 
 [CmdletBinding()]
@@ -14,28 +14,47 @@ if (-not $winget) {
     return
 }
 
-# GNU Make
-if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
-    Write-Host "GNU Make not found. Installing via winget..." -ForegroundColor Cyan
-    try {
-        winget install --id GnuWin32.Make --exact --accept-package-agreements --accept-source-agreements
-    } catch {
-        Write-Warning "Failed to install GNU Make via winget. You may need to install it manually."
-    }
-} else {
-    Write-Host "GNU Make already installed." -ForegroundColor Green
-}
+$failed = $false
 
 # PowerShell 7 (pwsh)
 if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
     Write-Host "PowerShell 7 not found. Installing via winget..." -ForegroundColor Cyan
     try {
         winget install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Warning "winget returned exit code $LASTEXITCODE for PowerShell 7"
+            $failed = $true
+        }
     } catch {
         Write-Warning "Failed to install PowerShell 7 via winget. You may need to install it manually."
+        $failed = $true
     }
 } else {
     Write-Host "PowerShell 7 already installed." -ForegroundColor Green
 }
 
+# Git
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "Git not found. Installing via winget..." -ForegroundColor Cyan
+    try {
+        winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Warning "winget returned exit code $LASTEXITCODE for Git"
+            $failed = $true
+        }
+    } catch {
+        Write-Warning "Failed to install Git via winget. You may need to install it manually."
+        $failed = $true
+    }
+} else {
+    Write-Host "Git already installed." -ForegroundColor Green
+}
+
+if ($failed) {
+    Write-Warning "One or more prerequisites failed to install."
+    exit 1
+}
+
 Write-Host "Prerequisite installation complete." -ForegroundColor Green
+exit 0
+

@@ -3,7 +3,7 @@
 <#
     This script downloads the required ISO/installer files for the SOC‑9000 lab.  It is intended
     for lab hosts running Windows with Internet access.  Files are downloaded only if they
-    are missing.  You can run this script manually or via `make download-isos`.
+    are missing.  Run this script manually to fetch required images.
 
     The default download folder is `E:\SOC-9000\isos`.  You can override this by passing
     `-IsoDir` when invoking the script.
