@@ -1,8 +1,8 @@
 #Requires -Version 7
+param([switch]$CheckOnly)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . $PSScriptRoot/vmrun-lib.ps1
-param([switch]$CheckOnly)
 
 Import-DotEnv
 
