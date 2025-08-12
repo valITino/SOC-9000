@@ -53,7 +53,7 @@ Ensure-PS2EXE
 
 Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
 try {
-    # Use console output to avoid interactive message boxes
+    # Use console output to aid diagnostics (avoid message boxes)
     Invoke-PS2EXE -InputFile $tempSource -OutputFile $resolvedOutput
     Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
 } catch {
