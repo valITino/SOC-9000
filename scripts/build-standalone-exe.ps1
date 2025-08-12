@@ -27,9 +27,13 @@ function Ensure-PS2EXE {
     }
 }
 
-try { $resolvedSource = (Resolve-Path -Path $Source).Path }
-catch { Write-Error "Source script not found at '$Source'."; exit 1 }
-
+# Resolve paths (allow relative input)
+try {
+    $resolvedSource = (Resolve-Path -Path $Source).Path
+} catch {
+    Write-Error "Source script not found at '$Source'."
+    exit 1
+}
 $resolvedOutput = [System.IO.Path]::GetFullPath($Output)
 
 Ensure-PS2EXE
@@ -42,4 +46,3 @@ try {
     Write-Error "Compilation failed: $_"
     exit 1
 }
-

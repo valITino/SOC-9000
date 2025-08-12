@@ -39,4 +39,3 @@ Write-Host "ScriptsDir : $ScriptsDir"
 
 if (-not (Test-Path $ScriptsDir)) { throw "Scripts dir not found at $ScriptsDir" }
 Write-Host "Smoke test OK." -ForegroundColor Green
-
