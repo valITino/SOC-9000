@@ -17,12 +17,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Ensure-PS2EXE {
+function Install-PS2EXE {
     if (-not (Get-Command Invoke-PS2EXE -ErrorAction SilentlyContinue)) {
-        Write-Host "PS2EXE module not found. Installing..." -ForegroundColor Yellow
-        try {
-            Install-Module -Name PS2EXE -Scope CurrentUser -Force
-        } catch {
+        Write-Output "PS2EXE module not found. Installing..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+        try { Install-Module -Name PS2EXE -Scope CurrentUser -Force }
+        catch {
             Write-Error "Failed to install PS2EXE module: $_"
             exit 1
         }
@@ -30,20 +31,16 @@ function Ensure-PS2EXE {
 }
 
 # Resolve paths (allow relative input)
-try {
-    $resolvedSource = (Resolve-Path -Path $Source).Path
-} catch {
-    Write-Error "Source script not found at '$Source'."
-    exit 1
-}
+try { $resolvedSource = (Resolve-Path -Path $Source).Path }
+catch { Write-Error "Source script not found at '$Source'."; exit 1 }
 $resolvedOutput = [System.IO.Path]::GetFullPath($Output)
 
-Ensure-PS2EXE
+Install-PS2EXE
 
-Write-Host "Compiling `"$resolvedSource`" to `"$resolvedOutput`"..." -ForegroundColor Cyan
+Write-Output "Compiling `$resolvedSource` to `$resolvedOutput`..."
 try {
     Invoke-PS2EXE -InputFile $resolvedSource -OutputFile $resolvedOutput -NoConsole
-    Write-Host "Executable created: $resolvedOutput" -ForegroundColor Green
+    Write-Output "Executable created: $resolvedOutput"
 } catch {
     Write-Error "Compilation failed: $_"
     exit 1
