@@ -39,40 +39,31 @@ You may download these yourself and place them into `E:\SOC-9000\isos`, **or** y
 
 ```powershell
 pwsh -File .\scripts\download-isos.ps1
-# or using make:
-make download-isos
 ```
 
 The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
 ## Install prerequisites
 
-Before building the standalone installer or running any Make targets that rely on GNU Make or PowerShell 7, ensure these tools are installed.  A helper script, `scripts/install-prereqs.ps1`, is provided to install them automatically via winget.  The Makefile includes convenient targets for installing prerequisites and building the installer in one step.
+Before building the standalone installer, ensure PowerShell 7 and Git are installed.  The helper script `scripts/install-prereqs.ps1` installs both via winget.
 
 From the repo root, run:
 
 ```powershell
 cd E:\SOC-9000\SOC-9000
-make prereqs      # installs GNU Make and PowerShell 7 if missing
-```
-
-Alternatively, you can call the script directly:
-
-```powershell
 pwsh -File .\scripts\install-prereqs.ps1
 ```
 
-The script checks if `make` and `pwsh` are available on your system and installs them via winget when necessary.
-If winget is missing, the script will warn and exit without making changes.
+If winget is missing or a package fails to install, the script writes an error and exits.  The standalone installer bundles this script and aborts if prerequisites cannot be installed.
 
-Once prerequisites are installed, you can build the self‑contained installer and package the repository with:
+To build the self‑contained installer script and package the repository:
 
 ```powershell
-make install-all  # installs prereqs and builds SOC-9000-installer.exe
-make package      # creates SOC-9000-starter.zip and SHA256SUMS.txt
+pwsh -File .\scripts\build-installer.ps1
+pwsh -File .\scripts\package-release.ps1
 ```
 
-These targets are especially useful when preparing a GitHub release.
+These scripts are especially useful when preparing a GitHub release.
 
 ## SSH key
 
@@ -96,9 +87,6 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\host-prepare.ps1
 Alternatively, use the standalone installer to perform the clone, ISO download, and bring‑up in one step:
 
 ```powershell
-# run from the repository root to install into E:\SOC-9000-Pre-Install
-make installer
-# or directly
 pwsh -File .\scripts\standalone-installer.ps1
 ```
 
@@ -106,4 +94,5 @@ pwsh -File .\scripts\standalone-installer.ps1
 
 k3s uses containerd by default; Docker images run fine.
 We'll add Portainer, Traefik (TLS for *.lab.local), and MetalLB IP pools per segment in later chunks.
+
 
