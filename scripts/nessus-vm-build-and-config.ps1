@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 function K { param([Parameter(ValueFromRemainingArguments)]$args) kubectl @args }
 
 # Load .env
-if (!(Test-Path ".env")) { throw ".env not found. Run 'make init' first." }
+if (!(Test-Path ".env")) { throw ".env not found. Copy .env.example to .env first." }
 (Get-Content ".env" | ? {$_ -and $_ -notmatch '^\s*#'}) | % {
   if ($_ -match '^\s*([^=]+)=(.*)$'){ $env:$($matches[1].Trim())=$matches[2].Trim() }
 }

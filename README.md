@@ -39,16 +39,13 @@ SOC‑9000 offers three ways to get started, depending on your level of comfort 
 2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
 
    ```powershell
-   # install prerequisites (GNU Make and PowerShell 7)
-   make prereqs
-   # download ISO images
-   make download-isos
-   # edit .env if needed
-   make up-all
+   pwsh -File .\scripts\install-prereqs.ps1
+   pwsh -File .\scripts\download-isos.ps1
+   pwsh -File .\scripts\lab-up.ps1
    ```
 
    This method is ideal if you don’t want to use Git but are comfortable running a few commands.
-3. **Git clone (contributor/developer)** — If you plan to contribute or prefer to work directly with the source repository, clone it and run the Make targets yourself.  See below.
+3. **Git clone (contributor/developer)** — If you plan to contribute or prefer to work directly with the source repository, clone it and run the scripts yourself.  See below.
 
 ### Clone and initialize (contributor/developer path)
 
@@ -57,25 +54,23 @@ If you are contributing to SOC‑9000 and wish to clone the repository directly,
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
-make init             # creates .env — edit it
-make up-all           # end-to-end bring-up (VMs, k3s, apps, telemetry)
-make status           # show IPs/URLs
+Copy-Item .env.example .env
+pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, telemetry)
+pwsh -File .\scripts\lab-status.ps1
 ```
 
-Before building the installer EXE or running any other Make targets, ensure the required tools are installed:
+Before building the installer EXE, ensure Git and PowerShell 7 are installed:
 
 ```powershell
-make prereqs          # installs GNU Make and PowerShell 7 if they are missing
+pwsh -File .\scripts\install-prereqs.ps1
 ```
 
 You can then build the self‑contained installer executable via:
 
 ```powershell
-make build-exe        # produces SOC-9000-installer.exe in the repo root
-make package          # packages SOC-9000-starter.zip and SHA256SUMS.txt for releases
+pwsh -File .\scripts\build-standalone-exe.ps1        # produces SOC-9000-installer.exe in the repo root
+pwsh -File .\scripts\package-release.ps1             # packages SOC-9000-starter.zip and SHA256SUMS.txt for releases
 ```
-
-The `install-all` target combines prerequisite installation and EXE build in one step.
 
 ### Smoke test
 
@@ -85,7 +80,7 @@ Validate that script paths resolve correctly without any network activity:
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 ```
 
-During `make up-all` you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
+During the bring-up process you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
 
 ### One‑click installation (end‑user path)
 
@@ -93,18 +88,18 @@ For a frictionless setup, download a release from GitHub (look for `SOC-9000-ins
 
 ```powershell
 # from within the cloned repo, build the installer executable
-make build-exe
+pwsh -File .\scripts\build-standalone-exe.ps1
 
 # then run it (or distribute it to others)
 SOC-9000-installer.exe
 
 # Alternatively, without building an exe, run the PowerShell installer directly
-make installer
+pwsh -File .\scripts\standalone-installer.ps1
 ```
 
 The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion by keeping the repository itself in `E:\SOC-9000` while placing ISO downloads and build artifacts under `E:\SOC-9000-Pre-Install` (or paths of your choice).  This separation means that you never mix the Git clone with downloaded assets.
 
-### URLs (after `make up-all`)
+### URLs (after bring-up)
 
 - <https://portainer.lab.local:9443>
 - <https://wazuh.lab.local>
@@ -198,7 +193,7 @@ Our automation reassigns LAN to 172.22.10.1 during the config import.
 
 ### D. Continue the automation
 
-Return to your PowerShell window (where `make up-all` paused) and press Enter.
+Return to your PowerShell window (where `lab-up.ps1` paused) and press Enter.
 The playbooks will SSH in, import config (interfaces, DHCP, rules, syslog),
 and reboot pfSense automatically.
 
@@ -241,14 +236,14 @@ sudo apt update && sudo apt -y install ansible git jq curl
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
-make init
+Copy-Item .env.example .env
 # Edit .env to match your ISO filenames & network names if needed
 ```
 
 ### Bring everything up (will pause for pfSense install)
 
 ```powershell
-make up-all
+pwsh -File .\scripts\lab-up.ps1
 ```
 
 ### pfSense (manual, 3 mins)
@@ -282,10 +277,10 @@ If names fail: run `scripts\hosts-refresh.ps1` as Admin.
 
 ### Useful commands
 
-- `make status`     # show IPs/URLs
-- `make backup`     # snapshot state + PV tarball (`E:\SOC-9000\backups`)
-- `make smoke`      # reachability check
-- `make reset`      # soft reset (reapply apps)
-- `make reset-hard` # also wipes PV data on ContainerHost
-- `make down-all`   # stop VMs
+- `pwsh -File scripts/lab-status.ps1`      # show IPs/URLs
+- `pwsh -File scripts/backup-run.ps1`      # snapshot state + PV tarball (`E:\SOC-9000\backups`)
+- `pwsh -File scripts/smoke-test.ps1`      # reachability check
+- `pwsh -File scripts/reset-lab.ps1`       # soft reset (reapply apps)
+- `pwsh -File scripts/reset-lab.ps1 -Hard` # also wipes PV data on ContainerHost
+- `pwsh -File scripts/lab-down.ps1`        # stop VMs
 

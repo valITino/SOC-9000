@@ -8,13 +8,18 @@ function Resolve-Vmrun {
     "C:\Program Files\VMware\VMware Workstation\vmrun.exe"
   )
   foreach ($p in $c) { if (Test-Path $p) { return $p } }
-  throw "vmrun.exe not found."
+  Write-Warning "vmrun.exe not found; VMware operations will be skipped."
+  return $null
 }
 
 function Import-DotEnv([string]$Path = ".env") {
-  if (!(Test-Path $Path)) { throw ".env not found at $Path. Run 'make init' first." }
+  if (!(Test-Path $Path)) { throw ".env not found at $Path. Copy .env.example to .env first." }
   $lines = Get-Content $Path | Where-Object { $_ -and $_ -notmatch '^\s*#' }
-  foreach ($l in $lines) { if ($l -match '^\s*([^=]+)=(.*)$') { $env:$($matches[1].Trim()) = $matches[2].Trim() } }
+  foreach ($l in $lines) {
+    if ($l -match '^\s*([^=]+)=(.*)$') {
+      Set-Item -Path "Env:$($matches[1].Trim())" -Value $matches[2].Trim()
+    }
+  }
 }
 
 function Assert-Path([string]$p, [string]$why) {
@@ -22,6 +27,12 @@ function Assert-Path([string]$p, [string]$why) {
 }
 
 function Test-VMwareNetworks {
+  if (-not (Resolve-Vmrun)) { return }
+  $getNetAdapter = Get-Command Get-NetAdapter -ErrorAction SilentlyContinue
+  if (-not $getNetAdapter) {
+    Write-Warning "Get-NetAdapter cmdlet missing; skipping network check."
+    return
+  }
   $need = @($env:VMNET_WAN,$env:VMNET_MGMT,$env:VMNET_SOC,$env:VMNET_VICTIM,$env:VMNET_RED)
   $have = (Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name)
   $miss = $need | ? { $_ -notin $have }
@@ -32,5 +43,3 @@ function Vmrun { param([Parameter(ValueFromRemainingArguments)] $Args) & (Resolv
 function Start-VM([string]$Vmx) { Vmrun -T ws start $Vmx nogui | Out-Null }
 function Stop-VM([string]$Vmx)  { Vmrun -T ws stop  $Vmx soft   | Out-Null }
 function Get-VmxPath([string]$ArtifactsDir,[string]$VmName){ $p = Join-Path $ArtifactsDir "$VmName\$VmName.vmx"; if(Test-Path $p){$p}else{throw "VMX not found: $p"} }
-
-Export-ModuleMember -Function * -ErrorAction SilentlyContinue

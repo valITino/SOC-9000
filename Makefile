@@ -42,7 +42,7 @@ installer:
 	@pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/standalone-installer.ps1
 
 
-# Install prerequisites (GNU Make and PowerShell 7) via winget
+# Install prerequisites (Git and PowerShell 7) via winget
 prereqs:
 	@powershell -ExecutionPolicy Bypass -File scripts/install-prereqs.ps1
 
