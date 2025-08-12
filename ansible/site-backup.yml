@@ -17,7 +17,9 @@
         kubectl version --output=yaml > {{ out_dir }}/cluster-version.yaml
         kubectl get ns -o yaml > {{ out_dir }}/namespaces.yaml
         kubectl get all,ingress,svc,cm,pvc,pv,deploy,ds,sts,job,cronjob -A -o yaml > {{ out_dir }}/resources.yaml
-        kubectl get secret -A -o json | jq '{items:[.items[]|{ns:.metadata.namespace,name:.metadata.name,type:.type}]}' > {{ out_dir }}/secrets-list.json
+        kubectl get secret -A -o json \
+          | jq '{items:[.items[]|{ns:.metadata.namespace,name:.metadata.name,type:.type}]}' \
+          > {{ out_dir }}/secrets-list.json
       args:
         executable: /bin/bash
       changed_when: false
