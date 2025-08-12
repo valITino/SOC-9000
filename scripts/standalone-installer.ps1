@@ -132,7 +132,8 @@ if (-not $SkipPrereqs) {
                 try {
                     Invoke-PowerShellScript -ScriptPath $prereqPath
                 } catch {
-                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+                    Write-Error "Prerequisite installation script failed. Aborting."
+                    exit 1
                 }
             } elseif ($EmbeddedPrereqs.Trim()) {
                 $tempPrereq = Join-Path ([System.IO.Path]::GetTempPath()) 'install-prereqs.ps1'
@@ -140,7 +141,8 @@ if (-not $SkipPrereqs) {
                 try {
                     Invoke-PowerShellScript -ScriptPath $tempPrereq
                 } catch {
-                    Write-Warning "Prerequisite installation script failed. Continuing may result in errors."
+                    Write-Error "Prerequisite installation script failed. Aborting."
+                    exit 1
                 }
             } else {
                 Write-Warning "Prerequisite script not found at $prereqPath. Skipping prerequisite installation."

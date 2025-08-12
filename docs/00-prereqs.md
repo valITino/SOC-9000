@@ -45,7 +45,7 @@ The script checks for existing files and downloads what’s missing, using known
 
 ## Install prerequisites
 
-Before building the standalone installer, ensure PowerShell 7 is installed.  A helper script, `scripts/install-prereqs.ps1`, will install it automatically via winget.
+Before building the standalone installer, ensure PowerShell 7 and Git are installed.  The helper script `scripts/install-prereqs.ps1` installs both via winget.
 
 From the repo root, run:
 
@@ -54,7 +54,7 @@ cd E:\SOC-9000\SOC-9000
 pwsh -File .\scripts\install-prereqs.ps1
 ```
 
-If winget is missing, the script will warn and exit without making changes.  The standalone installer script bundles this script so prerequisites are handled automatically.
+If winget is missing or a package fails to install, the script writes an error and exits.  The standalone installer bundles this script and aborts if prerequisites cannot be installed.
 
 To build the self‑contained installer script and package the repository:
 
