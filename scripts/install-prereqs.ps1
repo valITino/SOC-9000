@@ -1,4 +1,5 @@
 <#
+
     install-prereqs.ps1: Installs Git and PowerShell 7 if they are not already present.
 #>
 
@@ -57,4 +58,3 @@ if ($failed) {
 
 Write-Host "Prerequisite installation complete." -ForegroundColor Green
 exit 0
-

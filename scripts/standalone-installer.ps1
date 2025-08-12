@@ -121,6 +121,7 @@ function Invoke-PowerShellScript {
 
 Write-Host "== SOC-9000 Standalone Installer ==" -ForegroundColor Cyan
 Test-Administrator
+Test-Git
 
 # Prerequisites
 if (-not $SkipPrereqs) {
@@ -207,7 +208,7 @@ if (-not $SkipIsoDownload) {
     if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
-                Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+        Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
     }
 }
 
