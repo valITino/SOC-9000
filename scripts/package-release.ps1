@@ -3,7 +3,7 @@
 
     This script packages the repository for distribution, excluding large or transient directories
     such as `.git`, `artifacts`, `isos`, `temp` and existing zip files.  It also computes SHA256
-    checksums for the installer and starter zip to allow users to verify integrity.
+    checksums for the installer script and starter zip to allow users to verify integrity.
 
     Run this from the repository root:
         pwsh -File .\scripts\package-release.ps1
@@ -56,7 +56,7 @@ Compress-Archive -Path (Join-Path $tempDir '*') -DestinationPath $zipName -Force
 # Clean up staging directory
 Remove-Item -Recurse -Force $tempDir
 
-# Compute SHA256 checksums for the installer and starter zip
+# Compute SHA256 checksums for the installer script and starter zip
 Write-Host "Computing checksums..." -ForegroundColor Cyan
 function Append-Checksum($fileName) {
     if (Test-Path $fileName) {
@@ -65,7 +65,7 @@ function Append-Checksum($fileName) {
     }
 }
 
-Append-Checksum "SOC-9000-installer.exe"
+Append-Checksum "SOC-9000-installer.ps1"
 Append-Checksum $zipName
 
 Write-Host "Packaging complete. Generated files:" -ForegroundColor Green
