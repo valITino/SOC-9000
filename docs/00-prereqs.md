@@ -32,16 +32,18 @@ The lab requires several ISO and installer files that are **not included** in th
 
 - pfSense CE ISO (AMD64)
 - Ubuntu Server 22.04 ISO (AMD64)
-- Windows 11 Evaluation ISO (English)
+- Windows 11 ISO (English)
 - Nessus Essentials `.deb` (Ubuntu AMD64)
 
-You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch them automatically.  From the repo root run:
+Whenever possible, download the vendor-provided **SHA256 checksum files** for these images and place them next to the downloads. The installer automatically uses `*.sha256` files for verification.
+
+You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch Ubuntu automatically and open vendor pages for the rest.  From the repo root run:
 
 ```powershell
 pwsh -File .\scripts\download-isos.ps1
 ```
 
-The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
+The script downloads Ubuntu automatically and opens vendor pages for pfSense, Windows 11, and Nessus so you can fetch them manually. pfSense and Nessus require free accounts; using a disposable email is fine. Files can keep their vendor‑supplied names—the installer detects them automatically. Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
 ## Install prerequisites
 

@@ -1,11 +1,11 @@
 # Deploy Nessus Essentials on k3s and add a hosts entry.
 param(
-  [string]$Ns = "soc",
-  [string]$LbIp = "172.22.10.61",
-  [string]$Host = "nessus.lab.local"
+  [string]$Ns      = "soc",
+  [string]$LbIp    = "172.22.10.61",
+  [string]$HostName = "nessus.lab.local"
 )
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
-function K { param([Parameter(ValueFromRemainingArguments)]$args) kubectl @args }
+function K { kubectl $args }
 
 # Ensure namespace exists
 K get ns $Ns 2>$null | Out-Null; if ($LASTEXITCODE -ne 0) { K create ns $Ns | Out-Null }
@@ -30,10 +30,10 @@ if (-not $ip) { $ip = $LbIp }
 $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
 $orig = Get-Content $hosts
 $filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }
-$block = @("# SOC-9000 BEGIN", "$ip $Host", "# SOC-9000 END")
+$block = @("# SOC-9000 BEGIN", "$ip $HostName", "# SOC-9000 END")
 Set-Content -Path $hosts -Value ($filtered + $block) -Force
 
-Write-Host "`nOpen: https://$Host:8834"
+Write-Host "`nOpen: https://$HostName:8834"
 Write-Host "Setup steps:"
 Write-Host "  1) Choose 'Nessus Essentials', request/enter activation code."
 Write-Host "  2) Create the admin account."

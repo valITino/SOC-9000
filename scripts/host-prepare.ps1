@@ -29,8 +29,40 @@ $need = "VMnet8","VMnet20","VMnet21","VMnet22","VMnet23"
 $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
 $missing = $need | ? { $_ -notin $have }
 
+# Attempt automatic network creation if vmnetcfgcli.exe is available
+$vmnetcfg = FindExe "vmnetcfgcli.exe" @(
+  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfgcli.exe",
+  "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
+)
+if ($vmnetcfg -and $missing) {
+  $nets = @{
+    VMnet20 = '172.22.10.0'
+    VMnet21 = '172.22.20.0'
+    VMnet22 = '172.22.30.0'
+    VMnet23 = '172.22.40.0'
+  }
+  foreach ($n in $nets.GetEnumerator()) {
+    if ($missing -contains $n.Key) {
+      try {
+        & $vmnetcfg --add $n.Key --type hostonly --subnet $n.Value --netmask 255.255.255.0 --dhcp no 2>$null | Out-Null
+      } catch {
+        Write-Warning "Failed to configure $($n.Key): $($_.Exception.Message)"
+      }
+    }
+  }
+  $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
+  $missing = $need | ? { $_ -notin $have }
+}
+
 # WSL / Ansible (best effort)
 $wsl = (wsl -l -v 2>$null) -join "`n"
+if (-not $wsl) {
+  try {
+    Write-Host "Installing WSL Ubuntu-22.04..." -ForegroundColor Cyan
+    wsl --install -d Ubuntu-22.04 2>$null | Out-Null
+    $wsl = (wsl -l -v 2>$null) -join "`n"
+  } catch {}
+}
 $ans = try { wsl -e bash -lc "ansible --version | head -n1" 2>$null } catch { "" }
 
 # Output
@@ -52,11 +84,11 @@ Write-Host "`nNext steps:"
    - VMnet21 : Host-only 172.22.20.0/24, DHCP OFF
    - VMnet22 : Host-only 172.22.30.0/24, DHCP OFF
    - VMnet23 : Host-only 172.22.40.0/24, DHCP OFF"
-"2) Download to $IsoDir:
-   - pfSense CE (AMD64)  -> $(Join-Path $IsoDir 'pfsense.iso')
-   - Ubuntu 22.04 (AMD64)-> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
-   - Windows 11 Eval     -> $(Join-Path $IsoDir 'win11-eval.iso')
+"2) Place downloads in ${IsoDir}:
+   - pfSense CE ISO (Netgate account required)
+   - Ubuntu 22.04 (AMD64) -> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
+   - Windows 11 ISO (any filename)
    - Nessus Essentials .deb (Ubuntu AMD64)"
-"   (Tip: run scripts\download-isos.ps1 to download these automatically)"
+"   (Tip: run scripts\download-isos.ps1 to fetch Ubuntu automatically and open vendor pages for the rest)"
 "3) Ensure SSH key at %USERPROFILE%\.ssh\id_ed25519 (or create it)."
 "4) (Optional) Copy SSH key into WSL: scripts\copy-ssh-key-to-wsl.ps1"

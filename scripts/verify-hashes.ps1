@@ -37,10 +37,21 @@ function Find-ChecksumsFile {
 }
 
 function Get-ActualHashes {
-    param([string]$IsoDir,[string[]]$Candidates)
+    param(
+        [string]$IsoDir,
+        [string[]]$Candidates,
+        [hashtable]$AltPatterns
+    )
     $results = @()
+    $files = Get-ChildItem -Path $IsoDir -File -ErrorAction SilentlyContinue
     foreach ($name in $Candidates) {
         $path = Join-Path $IsoDir $name
+        if (-not (Test-Path $path) -and $AltPatterns.ContainsKey($name)) {
+            $pat = $AltPatterns[$name]
+            $match = $files | Where-Object { $_.Name -match $pat } | Select-Object -First 1
+            if ($match) { $path = $match.FullName }
+        }
+
         if (Test-Path $path) {
             $h = Get-FileHash -Algorithm SHA256 -Path $path
             $results += [pscustomobject]@{
@@ -121,13 +132,23 @@ $DefaultFiles = @(
   'nessus_latest_amd64.deb'
 )
 
+# Patterns to locate vendor-named files when canonical names are absent
+$AltPatterns = @{
+    'ubuntu-22.04.iso'       = '(?i)^ubuntu-22\.04.*\.iso$'
+    'pfsense.iso'            = '(?i)(pfsense|netgate).*\.iso$'
+    'win11-eval.iso'         = '(?i).*win(dows)?[^\\w]*11.*\.iso$'
+    'nessus_latest_amd64.deb' = '(?i)^nessus.*amd64.*\.deb$'
+}
+
 $ChecksumsPath = Find-ChecksumsFile -IsoDir $IsoDir -Given $ChecksumsPath
+
+# Gather actual file hashes first so we can auto-consume vendor *.sha256 files
+$Actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $DefaultFiles -AltPatterns $AltPatterns
 
 if ($OutPath) {
     # Emit actual hashes file for whatever exists
-    $actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $DefaultFiles
     $lines = @()
-    foreach ($a in $actual) {
+    foreach ($a in $Actual) {
         if ($a.Exists) {
             $lines += ("{0}  {1}" -f $a.SHA256, $a.File)
         } else {
@@ -139,6 +160,7 @@ if ($OutPath) {
     exit 0
 }
 
+# Load expected hashes from checksums.txt if available
 if (-not $ChecksumsPath) {
     # Create a template next to ISO dir and instruct the user
     $tmpl = Join-Path $IsoDir 'checksums.txt'
@@ -165,13 +187,27 @@ if (-not $ChecksumsPath) {
 Write-Host "Checksums file: $ChecksumsPath" -ForegroundColor Cyan
 $Expect = Parse-Checksums -Path $ChecksumsPath
 
-# Build candidate list from checksums + defaults
+# Supplement expected hashes with vendor-provided *.sha256 files
+foreach ($a in $Actual) {
+    if (-not $a.Exists) { continue }
+    $shaCandidates = @("$($a.Path).sha256","$($a.Path).sha256.txt") +
+        (Get-ChildItem -Path (Split-Path $a.Path) -File -ErrorAction SilentlyContinue |
+         Where-Object { $_.Name -like "$(Split-Path -Leaf $a.Path)*.sha256*" }) | % { $_.FullName }
+    $sha = $shaCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($sha) {
+        $line = Select-String -Path $sha -Pattern '[0-9A-Fa-f]{64}' | Select-Object -First 1
+        if ($line) { $Expect[$a.File] = $line.Matches[0].Value.ToUpperInvariant() }
+    }
+}
+
+# Build candidate list from expected hashes and defaults
 $AllNames = New-Object System.Collections.Generic.HashSet[string]
 foreach ($k in $Expect.Keys) { [void]$AllNames.Add($k) }
 foreach ($d in $DefaultFiles) { [void]$AllNames.Add($d) }
 $Candidates = @($AllNames)
 
-$Actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $Candidates
+# Recompute actual hashes with full candidate list
+$Actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $Candidates -AltPatterns $AltPatterns
 
 # Compare
 $rows = @()
