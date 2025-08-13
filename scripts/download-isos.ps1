@@ -104,6 +104,9 @@ function Ensure-OrOpenVendor {
     Write-Warn "$(Split-Path -Leaf $OutFile) requires a gated or expiring URL. Opening vendor page…"
     if ($VendorPage) { try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" } }
     Write-Info  "Please download manually and place it at: $OutFile"
+    # Wait for the user to complete the manual download before continuing
+    Write-Host "Press Enter after you have downloaded and placed the file to continue..." -ForegroundColor Yellow
+    Read-Host | Out-Null
 }
 
 # Targets
@@ -124,6 +127,9 @@ if (-not (Ensure-FromUrls -OutFile $PfSenseIso -Urls $pfList)) {
     Write-Info "Opening pfSense download page so you can pick a nearby mirror…"
     try { Start-Process 'https://www.pfsense.org/download/' } catch {}
     Write-Info "After download, save as: $PfSenseIso"
+    # Wait for the user to complete manual download before continuing
+    Write-Host "Press Enter after you have downloaded and saved the pfSense ISO to continue..." -ForegroundColor Yellow
+    Read-Host | Out-Null
 }
 
 # Windows 11 Eval (expiring)
@@ -131,5 +137,3 @@ Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://
 
 # Nessus (gated)
 Ensure-OrOpenVendor -OutFile $NessusDeb -UrlIfAny $NessusUrl -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials'
-
-Write-Good "All downloads complete (or vendor pages opened)."

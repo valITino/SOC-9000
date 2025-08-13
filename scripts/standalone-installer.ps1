@@ -92,7 +92,18 @@ function Test-Git {
 }
 
 function Test-Packer {
-    if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
+    # Try to locate packer in PATH or default installation directory
+    $packerCmd = Get-Command packer -ErrorAction SilentlyContinue
+    if (-not $packerCmd) {
+        $defaultPackerPath = 'C:\\Program Files\\HashiCorp\\Packer\\packer.exe'
+        if (Test-Path $defaultPackerPath) {
+            Write-Host "Packer not in PATH, but found at $defaultPackerPath. Using it temporarily." -ForegroundColor Yellow
+            # Add to PATH for current session
+            $env:Path += ';' + (Split-Path $defaultPackerPath)
+            $packerCmd = Get-Command packer -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not $packerCmd) {
         Write-Warning "HashiCorp Packer was not found. Lab bring-up cannot proceed."
         return $false
     }
