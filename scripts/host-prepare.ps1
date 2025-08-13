@@ -26,14 +26,6 @@ $freeGB = if($drive){ [math]::Round($drive.Free/1GB,2) } else { 0 }
 
 # VMware networks required
 $need = "VMnet8","VMnet20","VMnet21","VMnet22","VMnet23"
-function Get-VMnetNames {
-  Get-NetAdapter -Name 'VMware Network Adapter VMnet*' -Physical:$false -ErrorAction SilentlyContinue |
-    ForEach-Object {
-      if ($_.Name -match '(VMnet\d+)') { $matches[1] }
-    }
-}
-$have = Get-VMnetNames
-$missing = $need | Where-Object { $_ -notin $have }
 
 # Attempt automatic network creation if VMware's network utilities are available
 $vmnetcfgcli = FindExe "vmnetcfgcli.exe" @(
@@ -48,6 +40,21 @@ $editor = FindExe "vmnetcfg.exe" @(
   "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
   "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe"
 )
+
+function Get-VMnetNames {
+  if ($vnetlib) {
+    try {
+      & $vnetlib -- listNetworks 2>$null |
+        Where-Object { $_ -match '^(VMnet\d+)' } |
+        ForEach-Object { $matches[1] }
+    } catch { @() }
+  } else {
+    Get-NetAdapter -Name 'VMware Network Adapter VMnet*' -Physical:$false -ErrorAction SilentlyContinue |
+      ForEach-Object { if ($_.Name -match '(VMnet\d+)') { $matches[1] } }
+  }
+}
+$have = Get-VMnetNames
+$missing = $need | Where-Object { $_ -notin $have }
 
 if ($missing) {
   $nets = @(
@@ -68,7 +75,12 @@ if ($missing) {
           Invoke-VNetLib @("addNetwork", $n.Name)
           Invoke-VNetLib @("setSubnet", $n.Name, $n.Subnet, "255.255.255.0")
           Invoke-VNetLib @("setDhcp", $n.Name, ($n.Dhcp ? 'on' : 'off'))
-          Invoke-VNetLib @("setNat", $n.Name, ($n.Type -eq 'nat' ? 'on' : 'off'))
+          if ($n.Type -eq 'nat') {
+            Invoke-VNetLib @("setNat", $n.Name, 'on')
+          } else {
+            Invoke-VNetLib @("setNat", $n.Name, 'off')
+          }
+          Invoke-VNetLib @("updateAdapter", $n.Name)
           Write-Host "Configured $($n.Name) via vnetlib" -ForegroundColor Green
         } catch {
           Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
@@ -87,6 +99,10 @@ if ($missing) {
       }
     }
   }
+  try {
+    Get-Service -Name 'VMware NAT Service','VMware DHCP Service' -ErrorAction SilentlyContinue | Restart-Service -Force -ErrorAction SilentlyContinue
+  } catch {}
+  Start-Sleep -Seconds 3
   $have = Get-VMnetNames
   $missing = $need | Where-Object { $_ -notin $have }
 }
