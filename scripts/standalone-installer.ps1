@@ -214,18 +214,48 @@ if (-not $SkipIsoDownload) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
         Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
         Write-Host "Note: If pfSense/Win11/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
-        Write-Host "Note: If a file was opened in the browser (gated/expiring), save it to: $isoDir and re-run the installer." -ForegroundColor Yellow
     }
 }
 
-# --- Checksum validation (auto) ---
-if (-not $SkipHashCheck) {
+# --- Download Summary ---
+$requiredFiles = @(
+    @{ Name = 'ubuntu-22.04.iso';          Path = Join-Path $isoDir 'ubuntu-22.04.iso' },
+    @{ Name = 'pfsense.iso';               Path = Join-Path $isoDir 'pfsense.iso' },
+    @{ Name = 'win11-eval.iso';            Path = Join-Path $isoDir 'win11-eval.iso' },
+    @{ Name = 'nessus_latest_amd64.deb';   Path = Join-Path $isoDir 'nessus_latest_amd64.deb' }
+)
+
+Write-Host "`n== Download Summary ==" -ForegroundColor Cyan
+$missingCount = 0
+foreach ($file in $requiredFiles) {
+    if (Test-Path $file.Path) {
+        $sizeMB = [math]::Round((Get-Item $file.Path).Length / 1MB, 1)
+        Write-Host ("[OK] {0} - {1} MB" -f $file.Name, $sizeMB) -ForegroundColor Green
+    } else {
+        Write-Host ("[MISSING] {0}" -f $file.Name) -ForegroundColor Red
+        $missingCount++
+    }
+}
+
+if ($missingCount -gt 0) {
+    Write-Host "`nSome files are missing. Please download or copy them into: $isoDir" -ForegroundColor Yellow
+    Write-Host "Then re-run the installer. Skipping checksum validation because not all files are present." -ForegroundColor Yellow
+    $skipValidationDueToMissing = $true
+} else {
+    $skipValidationDueToMissing = $false
+}
+
+# Optional reminder after gated downloads
+Write-Host "Note: If a file was opened in the browser (gated/expiring), save it to: $isoDir and re-run if needed." -ForegroundColor Yellow
+
+# --- Checksum validation (auto, only if everything exists) ---
+if (-not $SkipHashCheck -and -not $skipValidationDueToMissing) {
     $verifyScript   = Join-Path $ScriptsDir 'verify-hashes.ps1'
     $checksumsIso   = Join-Path $isoDir 'checksums.txt'
     $checksumsRoot  = Join-Path $ProjectRoot 'checksums.txt'
     $checksumsPath  = $null
 
-    if (Test-Path $checksumsIso)   { $checksumsPath = $checksumsIso }
+    if (Test-Path $checksumsIso)      { $checksumsPath = $checksumsIso }
     elseif (Test-Path $checksumsRoot) { $checksumsPath = $checksumsRoot }
 
     if (Test-Path $verifyScript) {
@@ -247,8 +277,10 @@ if (-not $SkipHashCheck) {
     } else {
         Write-Warning "verify-hashes.ps1 not found in scripts/. Skipping checksum validation."
     }
-} else {
+} elseif ($SkipHashCheck) {
     Write-Host "Skipping checksum validation (-SkipHashCheck)." -ForegroundColor Yellow
+} else {
+    Write-Host "Checksum validation skipped because some files are missing." -ForegroundColor Yellow
 }
 
 # Update .env paths
