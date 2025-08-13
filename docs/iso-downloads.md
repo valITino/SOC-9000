@@ -24,7 +24,7 @@ identity.  After logging in:
 1. Navigate to <https://www.pfsense.org/download/>.
 2. Select the **pfSense CE** version and architecture (e.g. `amd64` installer).
 3. Choose a mirror close to your location and download the ISO.
-4. Save the file into your `ISO_DIR` as **`pfsense.iso`** (rename if needed).
+4. Save the file into your `ISO_DIR`. The installer automatically detects any pfSense ISO file name.
 
 If automatic downloading fails, the installer will open the download page for
 you and pause.  Place the ISO into the `isos` directory and then resume the
@@ -47,10 +47,7 @@ official Windows 11 ISO manually:
    24 hours.  Sign in with your Microsoft account if prompted.
 4. Download the ISO.  The file name may differ from the default
    `win11-eval.iso`, for example `Win11_23H2_EnglishInternational_x64.iso`.
-5. Copy or rename the file into your `ISO_DIR`.  The installer will attempt to
-   detect any ISO whose name contains "win" and "11" automatically.  If
-   multiple Windows 11 ISOs exist, rename the one you intend to use to
-   `win11-eval.iso` for clarity.
+5. Copy the file into your `ISO_DIR`. The installer detects any ISO whose name contains "win" and "11" automatically. If multiple Windows 11 ISOs exist, remove the extras or rename the one you intend to use for clarity.
 
 ## Nessus Essentials
 
@@ -64,16 +61,12 @@ address if you prefer not to receive marketing emails.  To download the
    address can be used.
 2. After registration, follow the download link provided and select the Linux
    (Ubuntu/Debian) installer.
-3. Save the file into your `ISO_DIR` as **`nessus_latest_amd64.deb`** (rename
-   the file if the vendor uses a versioned name).
+3. Save the file into your `ISO_DIR`. The installer automatically detects Nessus packages that include `amd64` in the name.
 
 ## Summary
 
 - Place all downloaded files into the directory specified by the `ISO_DIR`
   environment variable (default: `E:\\SOC-9000-Pre-Install\\isos`).
-- Ensure the file names match those expected by the installer (`pfsense.iso`,
-  `win11-eval.iso`, and `nessus_latest_amd64.deb`).  The installer will
-  automatically detect Windows 11 ISOs with other names, but renaming to the
-  expected name avoids ambiguity.
+- The installer automatically detects pfSense, Windows 11, and Nessus files based on their content; renaming is optional.
 - After downloading and copying the files, re‑run the installer with the
   `-SkipPrereqs` option to continue the lab bring‑up.

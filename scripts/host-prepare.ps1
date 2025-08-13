@@ -52,10 +52,10 @@ Write-Host "`nNext steps:"
    - VMnet21 : Host-only 172.22.20.0/24, DHCP OFF
    - VMnet22 : Host-only 172.22.30.0/24, DHCP OFF
    - VMnet23 : Host-only 172.22.40.0/24, DHCP OFF"
-"2) Download to $IsoDir:
-   - pfSense CE (AMD64)  -> $(Join-Path $IsoDir 'pfsense.iso')
-   - Ubuntu 22.04 (AMD64)-> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
-   - Windows 11 Eval     -> $(Join-Path $IsoDir 'win11-eval.iso')
+"2) Place downloads in ${IsoDir}:
+   - pfSense CE ISO (Netgate account required)
+   - Ubuntu 22.04 (AMD64) -> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
+   - Windows 11 ISO (any filename)
    - Nessus Essentials .deb (Ubuntu AMD64)"
 "   (Tip: run scripts\download-isos.ps1 to fetch Ubuntu automatically and open vendor pages for the rest)"
 "3) Ensure SSH key at %USERPROFILE%\.ssh\id_ed25519 (or create it)."

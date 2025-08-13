@@ -232,7 +232,10 @@ if (-not $SkipIsoDownload) {
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
         Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
-        Write-Host "Note: pfSense/Win11/Nessus require manual downloads. Their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
+        # Inform the user that pfSense, Windows 11 and Nessus downloads are manual only.
+        # pfSense and Nessus require free vendor accounts; using a disposable email is fine.
+        # Files may retain their vendor names—the installer locates them automatically.
+        Write-Host "Note: pfSense/Win11/Nessus require manual downloads (pfSense/Nessus need free accounts; burner email works). Their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
     }
 }
 
@@ -263,7 +266,7 @@ if ($Win11Detected) {
 }
 
 # pfSense: accept vendor-style names (pfSense-CE-<ver>-RELEASE-amd64.iso) or fallback to pfsense.iso
-$PfSenseDetected = Find-FirstMatchingFile -Dir $isoDir -Patterns @('(?i)^pfsense.*\.iso$')
+$PfSenseDetected = Find-FirstMatchingFile -Dir $isoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
 if ($PfSenseDetected) {
     $PfSenseIsoPath = $PfSenseDetected.FullName
     $PfSenseDisplay = $PfSenseDetected.Name
@@ -360,6 +363,9 @@ if (Test-Path $envPath) {
         elseif ($line -match '^(ISO_DIR)=')       { $updated += "ISO_DIR=" + (Join-Path $InstallDir 'isos') }
         elseif ($line -match '^(ARTIFACTS_DIR)=') { $updated += "ARTIFACTS_DIR=" + (Join-Path $InstallDir 'artifacts') }
         elseif ($line -match '^(TEMP_DIR)=')      { $updated += "TEMP_DIR="      + (Join-Path $InstallDir 'temp') }
+        elseif ($line -match '^(ISO_PFSENSE)=')   { $updated += "ISO_PFSENSE=$PfSenseDisplay" }
+        elseif ($line -match '^(ISO_UBUNTU)=')    { $updated += "ISO_UBUNTU=ubuntu-22.04.iso" }
+        elseif ($line -match '^(ISO_WINDOWS)=')   { $updated += "ISO_WINDOWS=$Win11Display" }
         else                                      { $updated += $line }
     }
     $updated | Set-Content $envPath -Encoding ASCII

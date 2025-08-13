@@ -7,13 +7,40 @@ packer {
   }
 }
 
-variable "iso_path"     { type = string, default = "E:/SOC-9000/isos/ubuntu-22.04.iso" }
-variable "ssh_username" { type = string, default = "labadmin" }
-variable "ssh_password" { type = string, default = "ChangeMe_S0C9000!" }
-variable "vm_name"      { type = string, default = "container-host" }
-variable "disk_size_mb" { type = number, default = 100000 }
-variable "cpus"         { type = number, default = 6 }
-variable "memory_mb"    { type = number, default = 16384 }
+variable "iso_path" {
+  type    = string
+  default = "E:/SOC-9000/isos/ubuntu-22.04.iso"
+}
+
+variable "ssh_username" {
+  type    = string
+  default = "labadmin"
+}
+
+variable "ssh_password" {
+  type    = string
+  default = "ChangeMe_S0C9000!"
+}
+
+variable "vm_name" {
+  type    = string
+  default = "container-host"
+}
+
+variable "disk_size_mb" {
+  type    = number
+  default = 100000
+}
+
+variable "cpus" {
+  type    = number
+  default = 6
+}
+
+variable "memory_mb" {
+  type    = number
+  default = 16384
+}
 
 source "vmware-iso" "ubuntu2204" {
   vm_name              = var.vm_name

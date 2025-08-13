@@ -58,7 +58,7 @@ function Invoke-Download {
     for ($i=1; $i -le $MaxTries; $i++) {
         try {
             Write-Info "[*] Downloading $(Split-Path -Leaf $OutFile) (try $i/$MaxTries)..."
-            $resp = Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -PassThru -ErrorAction Stop
             $ct = $resp.Headers['Content-Type']
             if ($ct -and -not ($AllowedIsoContentTypes -contains $ct)) {
                 Write-Warn "Downloaded but content-type '$ct' is unusual for ISO; keeping file."
@@ -90,52 +90,60 @@ function Ensure-FromUrls {
     return $false
 }
 
-function Ensure-OrOpenVendor {
+function Find-FirstMatchingFile {
     param(
-        [Parameter(Mandatory)] [string]$OutFile,
-        [string]$VendorPage
+        [Parameter(Mandatory)] [string]$Dir,
+        [Parameter(Mandatory)] [string[]]$Patterns
     )
-    # If the file already exists, nothing to do
-    if (Test-Path $OutFile) {
-        Write-Good "[=] Exists: $(Split-Path -Leaf $OutFile)"
-        return
+    if (-not (Test-Path $Dir)) { return $null }
+    $files = Get-ChildItem -Path $Dir -File -ErrorAction SilentlyContinue
+    foreach ($p in $Patterns) {
+        $m = $files | Where-Object { $_.Name -match $p } | Select-Object -First 1
+        if ($m) { return $m }
     }
-    # Always open the vendor page for manual download
-    Write-Warn "$(Split-Path -Leaf $OutFile) requires a gated or expiring URL. Opening vendor page…"
-    if ($VendorPage) {
-        try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" }
-    }
-    Write-Info "Please download manually and place it at: $OutFile"
-    # Record that a manual download is needed; the unified prompt at the end
-    # will wait for the user to press Enter once all manual downloads are complete.
+    return $null
+}
+
+function Open-VendorPage {
+    param(
+        [Parameter(Mandatory)] [string]$VendorPage,
+        [Parameter(Mandatory)] [string]$DisplayName
+    )
+    Write-Warn "$DisplayName requires manual download. Opening vendor page…"
+    try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" }
+    Write-Info "Save the file into $IsoDir with its original name."
     $script:manualFilesNeeded = $true
 }
 
 # Targets
 $UbuntuIso  = Join-Path $IsoDir 'ubuntu-22.04.iso'
-$PfSenseIso = Join-Path $IsoDir 'pfsense.iso'
-$Win11Iso   = Join-Path $IsoDir 'win11-eval.iso'
-$NessusDeb  = Join-Path $IsoDir 'nessus_latest_amd64.deb'
 
 # Ubuntu (static)
 Ensure-FromUrls -OutFile $UbuntuIso -Urls @($UbuntuUrl) | Out-Null
 
-# pfSense: always open vendor page for manual download.
-Ensure-OrOpenVendor -OutFile $PfSenseIso -VendorPage 'https://www.pfsense.org/download/'
+# pfSense: detect existing file or open vendor page
+$pf = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
+if ($pf) {
+    Write-Good "[=] Exists: $($pf.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.pfsense.org/download/' -DisplayName 'pfSense ISO (Netgate account required; burner email OK)'
+}
 
-# Windows 11 ISO (International)
-# The official Microsoft download page provides a time-limited URL for the ISO.
-# The script opens the page so you can select the edition and language and save
-# the ISO manually.  Rename the file to match $Win11Iso or adjust your .env
-# if the vendor uses a versioned name.
-Ensure-OrOpenVendor -OutFile $Win11Iso -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11'
+# Windows 11 ISO
+$win = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i).*win(dows)?[^\\w]*11.*\.iso$')
+if ($win) {
+    Write-Good "[=] Exists: $($win.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11' -DisplayName 'Windows 11 ISO'
+}
 
-# Nessus (gated)
-# Tenable’s Nessus downloads require you to sign up for a Nessus Essentials key
-# before the download link becomes available.  The installer opens the
-# registration page so you can obtain the download link and save the package
-# manually.  After placing the file, press Enter when prompted to continue.
-Ensure-OrOpenVendor -OutFile $NessusDeb -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials'
+# Nessus package
+$nes = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)^nessus.*amd64.*\.deb$')
+if ($nes) {
+    Write-Good "[=] Exists: $($nes.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials' -DisplayName 'Nessus Essentials .deb (registration required; burner email OK)'
+}
 
 # Unified prompt: if any manual downloads were required, prompt once at the end
 if ($script:manualFilesNeeded) {
