@@ -18,7 +18,7 @@ Goal: Prepare Windows 11 + VMware Workstation for a pfSense-routed, k3s-managed,
 
 ## Networks (Virtual Network Editor)
 
-The `scripts/host-prepare.ps1` helper uses VMware's `vmnetcfg.exe` or `vnetlib.exe` to create the required VMnets automatically. If the tools are missing, it launches **Virtual Network Editor** and pauses until you confirm the networks are ready:
+The `scripts/host-prepare.ps1` helper uses VMware's `vnetlib.exe` (or `vmnetcfgcli.exe` if available) to create and verify the required VMnets automatically. If the tools are missing or configuration fails, it launches **Virtual Network Editor** (`vmnetcfg.exe`) and pauses until you confirm the networks are ready:
 
 - `VMnet8` — NAT (DHCP ON)
 - `VMnet20` — MGMT `172.22.10.0/24` (DHCP OFF)

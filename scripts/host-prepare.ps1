@@ -26,15 +26,19 @@ $freeGB = if($drive){ [math]::Round($drive.Free/1GB,2) } else { 0 }
 
 # VMware networks required
 $need = "VMnet8","VMnet20","VMnet21","VMnet22","VMnet23"
-$have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
-$missing = $need | ? { $_ -notin $have }
+function Get-VMnetNames {
+  Get-NetAdapter -Name 'VMware Network Adapter VMnet*' -Physical:$false -ErrorAction SilentlyContinue |
+    ForEach-Object {
+      if ($_.Name -match '(VMnet\d+)') { $matches[1] }
+    }
+}
+$have = Get-VMnetNames
+$missing = $need | Where-Object { $_ -notin $have }
 
 # Attempt automatic network creation if VMware's network utilities are available
 $vmnetcfgcli = FindExe "vmnetcfgcli.exe" @(
   "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfgcli.exe",
-  "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe",
-  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
-  "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe"
+  "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
 )
 $vnetlib = FindExe "vnetlib.exe" @(
   "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib.exe",
@@ -54,13 +58,17 @@ if ($missing) {
     @{Name='VMnet23'; Type='hostonly'; Subnet='172.22.40.0';  Dhcp=$false}
   )
   if ($vnetlib) {
+    function Invoke-VNetLib([string[]]$args) {
+      & $vnetlib -- @args 2>$null | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "vnetlib $($args -join ' ') failed ($LASTEXITCODE)" }
+    }
     foreach ($n in $nets) {
       if ($missing -contains $n.Name) {
         try {
-          & $vnetlib -- addNetwork $n.Name 2>$null | Out-Null
-          & $vnetlib -- setSubnet $n.Name $n.Subnet 255.255.255.0 2>$null | Out-Null
-          & $vnetlib -- setDhcp $n.Name ($n.Dhcp ? 'on' : 'off') 2>$null | Out-Null
-          & $vnetlib -- setNat $n.Name ($n.Type -eq 'nat' ? 'on' : 'off') 2>$null | Out-Null
+          Invoke-VNetLib @("addNetwork", $n.Name)
+          Invoke-VNetLib @("setSubnet", $n.Name, $n.Subnet, "255.255.255.0")
+          Invoke-VNetLib @("setDhcp", $n.Name, ($n.Dhcp ? 'on' : 'off'))
+          Invoke-VNetLib @("setNat", $n.Name, ($n.Type -eq 'nat' ? 'on' : 'off'))
           Write-Host "Configured $($n.Name) via vnetlib" -ForegroundColor Green
         } catch {
           Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
@@ -79,8 +87,8 @@ if ($missing) {
       }
     }
   }
-  $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
-  $missing = $need | ? { $_ -notin $have }
+  $have = Get-VMnetNames
+  $missing = $need | Where-Object { $_ -notin $have }
 }
 
 if ($missing) {
@@ -94,8 +102,8 @@ if ($missing) {
   do {
     $choice = Read-Host "[D]one, let's go / [N]ot working yet, restart later"
     if ($choice -match '^[Nn]') { Write-Host "Exiting. Re-run after configuring networks."; exit 1 }
-    $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
-    $missing = $need | ? { $_ -notin $have }
+    $have = Get-VMnetNames
+    $missing = $need | Where-Object { $_ -notin $have }
     if ($missing) { Write-Warning "Still missing: $($missing -join ', ')" }
   } while ($missing)
 }
