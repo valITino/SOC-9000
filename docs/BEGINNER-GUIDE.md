@@ -42,11 +42,11 @@ You need enough CPU and memory to run several VMs concurrently.  More is always 
 The lab requires several OS images that are **not** stored in this repository.  A helper script is provided to download them for you:
 
 - **Ubuntu 22.04 ISO** – base for ContainerHost and WSL
-- **Windows 11 Evaluation ISO** – base for the victim VM (trial license)
+- **Windows 11 ISO** – base for the victim VM
 - **pfSense ISO** – firewall/router installer
 - **Nessus Essentials (.deb)** – optional for the Nessus VM path
 
-To download these automatically:
+To fetch the images:
 
 1. Open **PowerShell as Administrator** and navigate to your cloned repo:
    ```powershell
@@ -57,7 +57,7 @@ To download these automatically:
    pwsh -File .\scripts\download-isos.ps1
    ```
 
-The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads each file if it does not already exist, and verifies basic properties (size and type).  Direct download URLs are embedded in the script; you can update them if new releases become available.  If you prefer to supply your own ISOs, you can place them in the folder and the script will skip downloading.
+The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads Ubuntu automatically if it is missing, and opens vendor pages for pfSense, Windows 11, and Nessus so you can download them manually. pfSense and Nessus require free accounts; a burner email works fine. You can keep the original file names—the installer detects them automatically. If you prefer to supply your own files, place them in the folder and the script will skip them.
 
 ### One‑click installer
 
