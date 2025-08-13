@@ -30,13 +30,20 @@ $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
 $missing = $need | ? { $_ -notin $have }
 
 # Attempt automatic network creation if VMware's network CLI is available
-$vmnetcfg = FindExe "vmnetcfg.exe" @(
-  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
-  "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe",
+$vmnetcfgcli = FindExe "vmnetcfgcli.exe" @(
   "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfgcli.exe",
   "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
 )
-if ($vmnetcfg -and $missing) {
+$vnetlib = FindExe "vnetlib.exe" @(
+  "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib.exe",
+  "C:\Program Files\VMware\VMware Workstation\vnetlib.exe"
+)
+$vmnetcfg = FindExe "vmnetcfg.exe" @(
+  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
+  "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe"
+)
+
+if ($missing) {
   $nets = @(
     @{Name='VMnet8';  Type='nat';      Subnet='192.168.37.0'; Dhcp=$true},
     @{Name='VMnet20'; Type='hostonly'; Subnet='172.22.10.0';  Dhcp=$false},
@@ -44,14 +51,31 @@ if ($vmnetcfg -and $missing) {
     @{Name='VMnet22'; Type='hostonly'; Subnet='172.22.30.0';  Dhcp=$false},
     @{Name='VMnet23'; Type='hostonly'; Subnet='172.22.40.0';  Dhcp=$false}
   )
-  foreach ($n in $nets) {
-    if ($missing -contains $n.Name) {
-      try {
-        & $vmnetcfg --add $n.Name --type $n.Type --subnet $n.Subnet --netmask 255.255.255.0 --dhcp ($n.Dhcp ? 'yes' : 'no') 2>$null | Out-Null
-      } catch {
-        Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
+  if ($vmnetcfgcli) {
+    foreach ($n in $nets) {
+      if ($missing -contains $n.Name) {
+        try {
+          & $vmnetcfgcli --add $n.Name --type $n.Type --subnet $n.Subnet --netmask 255.255.255.0 --dhcp ($n.Dhcp ? 'yes' : 'no') 2>$null | Out-Null
+        } catch {
+          Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
+        }
       }
     }
+  } elseif ($vnetlib) {
+    foreach ($n in $nets) {
+      if ($missing -contains $n.Name) {
+        try {
+          & $vnetlib -- addNetwork $n.Name 2>$null | Out-Null
+          & $vnetlib -- setSubnet $n.Name $n.Subnet 255.255.255.0 2>$null | Out-Null
+          & $vnetlib -- setDhcp $n.Name ($n.Dhcp ? 'on' : 'off') 2>$null | Out-Null
+          & $vnetlib -- setNat $n.Name ($n.Type -eq 'nat' ? 'on' : 'off') 2>$null | Out-Null
+        } catch {
+          Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
+        }
+      }
+    }
+  } elseif ($vmnetcfg) {
+    Start-Process $vmnetcfg -Verb runAs
   }
   $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
   $missing = $need | ? { $_ -notin $have }
