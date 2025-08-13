@@ -225,7 +225,7 @@ sudo apt update && sudo apt -y install ansible git jq curl
 
 ### VMware nets (host-only)
 
-Created automatically by `scripts/host-prepare.ps1` (uses VMware's `vmnetcfgcli.exe`):
+Created automatically by `scripts/host-prepare.ps1` (uses VMware's `vmnetcfgcli.exe`/`vnetlib.exe` when available):
 
 - VMnet20 = 172.22.10.0/24 (MGMT)
 - VMnet21 = 172.22.20.0/24 (SOC)
