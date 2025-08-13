@@ -1,4 +1,6 @@
-# Build Ubuntu ContainerHost and Windows victim with dynamic ISO paths
+# Build Ubuntu ContainerHost and Windows victim with dynamic ISO paths.
+# Uses Packer's headless vmware-iso builder; a temporary VNC endpoint is printed but no viewer is required.
+# Expect roughly 10–20 minutes for the Ubuntu build and 30–60 minutes for the Windows build on typical hardware.
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 
 # Read .env for ISO_DIR and filenames

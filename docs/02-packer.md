@@ -15,3 +15,5 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\build-packer.ps1
 # or run each packer subdir manually
 ```
 Artifacts are written to E:\SOC-9000\artifacts\<vm-name>\*.vmx.
+
+> The build runs headless. Packer briefly exposes a VNC port for automation, but no viewer is required. On typical hardware, the Ubuntu build takes ~10–20 minutes and the Windows build ~30–60 minutes.
