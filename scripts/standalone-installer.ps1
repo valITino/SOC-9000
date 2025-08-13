@@ -97,9 +97,9 @@ function Test-Packer {
     if (-not $packerCmd) {
         $defaultPackerPath = 'C:\\Program Files\\HashiCorp\\Packer\\packer.exe'
         if (Test-Path $defaultPackerPath) {
-            Write-Host "Packer not in PATH, but found at $defaultPackerPath. Using it temporarily." -ForegroundColor Yellow
-            # Add to PATH for current session
-            $env:Path += ';' + (Split-Path $defaultPackerPath)
+            Write-Host "Packer not in PATH, but found at $defaultPackerPath. Updating PATH for this session." -ForegroundColor Yellow
+            # Append the directory containing packer.exe to PATH for the current process.
+            $env:Path = $env:Path + ';' + (Split-Path $defaultPackerPath)
             $packerCmd = Get-Command packer -ErrorAction SilentlyContinue
         }
     }
@@ -108,6 +108,24 @@ function Test-Packer {
         return $false
     }
     return $true
+}
+
+# Returns the filename of a Windows 11 ISO if present in the specified directory.
+# The script accepts a number of possible file names (e.g. win11-eval.iso,
+# win11.iso, windows11.iso, Win11_EnglishInternational_x64.iso).  If none are
+# found, it falls back to a default name so that the download script knows
+# where to save the evaluation ISO.  Users can avoid renaming by simply
+# placing any ISO whose name contains "win" and "11" in the isos folder; the
+# summary below will detect it automatically.
+function Get-Win11IsoName {
+    param([string]$IsoDir)
+    $patterns = @('win11*.iso','windows11*.iso','win*.iso','windows*.iso')
+    foreach ($pat in $patterns) {
+        $file = Get-ChildItem -Path $IsoDir -Filter $pat -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '11' } | Sort-Object -Property Length -Descending | Select-Object -First 1
+        if ($file) { return $file.Name }
+    }
+    # Default target name for the installer to use when saving an evaluation ISO
+    return 'win11-eval.iso'
 }
 
 function Run-PowerShellScript {
@@ -224,15 +242,18 @@ if (-not $SkipIsoDownload) {
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
         Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
-        Write-Host "Note: If pfSense/Win11/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
+        Write-Host "Note: If pfSense/Windows/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
     }
 }
 
 # --- Download Summary ---
+# Determine the Windows 11 ISO name dynamically.  If multiple ISOs are present
+# you may adjust this function as needed.  See Get-Win11IsoName above.
+$winIsoName  = Get-Win11IsoName -IsoDir $isoDir
 $requiredFiles = @(
     @{ Name = 'ubuntu-22.04.iso';          Path = Join-Path $isoDir 'ubuntu-22.04.iso' },
     @{ Name = 'pfsense.iso';               Path = Join-Path $isoDir 'pfsense.iso' },
-    @{ Name = 'win11-eval.iso';            Path = Join-Path $isoDir 'win11-eval.iso' },
+    @{ Name = $winIsoName;                 Path = Join-Path $isoDir $winIsoName },
     @{ Name = 'nessus_latest_amd64.deb';   Path = Join-Path $isoDir 'nessus_latest_amd64.deb' }
 )
 
@@ -257,7 +278,7 @@ if ($missingCount -gt 0) {
 }
 
 # Optional reminder after gated downloads
-Write-Host "Note: If a file was opened in the browser (gated/expiring), save it to: $isoDir and re-run if needed." -ForegroundColor Yellow
+Write-Host "Note: If a file was opened in the browser (gated/expiring), you may need to sign in or register on the vendor site before the download becomes available.  Save the file into: $isoDir and re-run if needed." -ForegroundColor Yellow
 
 # --- Checksum validation (auto, only if everything exists) ---
 if (-not $SkipHashCheck -and -not $skipValidationDueToMissing) {

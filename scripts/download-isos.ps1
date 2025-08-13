@@ -20,6 +20,11 @@ function Write-Good($m){ Write-Host $m -ForegroundColor Green }
 function Write-Warn($m){ Write-Warning $m }
 function Write-Err ($m){ Write-Error   $m }
 
+# Global flag to track whether any manual downloads were required.  If set,
+# we'll prompt the user once at the end of the script instead of for each
+# individual file.
+$script:manualFilesNeeded = $false
+
 # Load .env if present for ISO_DIR/URL overrides
 $repoDir = Split-Path -Parent $PSCommandPath
 $rootDir = Split-Path -Parent $repoDir
@@ -97,16 +102,24 @@ function Ensure-OrOpenVendor {
         [string]$UrlIfAny,
         [string]$VendorPage
     )
-    if (Test-Path $OutFile) { Write-Good "[=] Exists: $(Split-Path -Leaf $OutFile)"; return }
+    # If the file already exists, nothing to do
+    if (Test-Path $OutFile) {
+        Write-Good "[=] Exists: $(Split-Path -Leaf $OutFile)"
+        return
+    }
+    # Attempt direct download if a URL override was provided
     if ($UrlIfAny) {
         if (Invoke-Download -Uri $UrlIfAny -OutFile $OutFile) { return }
     }
+    # Fall back to manual download: open the vendor page and defer prompting
     Write-Warn "$(Split-Path -Leaf $OutFile) requires a gated or expiring URL. Opening vendor page…"
-    if ($VendorPage) { try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" } }
-    Write-Info  "Please download manually and place it at: $OutFile"
-    # Wait for the user to complete the manual download before continuing
-    Write-Host "Press Enter after you have downloaded and placed the file to continue..." -ForegroundColor Yellow
-    Read-Host | Out-Null
+    if ($VendorPage) {
+        try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" }
+    }
+    Write-Info "Please download manually and place it at: $OutFile"
+    # Record that a manual download is needed; the unified prompt at the end
+    # will wait for the user to press Enter once all downloads are complete.
+    $script:manualFilesNeeded = $true
 }
 
 # Targets
@@ -127,13 +140,39 @@ if (-not (Ensure-FromUrls -OutFile $PfSenseIso -Urls $pfList)) {
     Write-Info "Opening pfSense download page so you can pick a nearby mirror…"
     try { Start-Process 'https://www.pfsense.org/download/' } catch {}
     Write-Info "After download, save as: $PfSenseIso"
-    # Wait for the user to complete manual download before continuing
-    Write-Host "Press Enter after you have downloaded and saved the pfSense ISO to continue..." -ForegroundColor Yellow
-    Read-Host | Out-Null
+    # pfSense downloads require you to create or sign in to a Netgate account.  Use a
+    # throwaway email if desired.  We defer the pause until the end of the
+    # script; set a flag so that a single prompt will fire when all manual
+    # downloads are complete.
+    $script:manualFilesNeeded = $true
 }
 
-# Windows 11 Eval (expiring)
+# -----------------------------------------------------------------------------
+# Windows 11 ISO (eval or other)
+#
+# The Microsoft Evaluation Center requires you to sign in and accept terms before
+# a download link is provided.  The installer script attempts to download the
+# evaluation ISO automatically if you provide a valid, non-expiring URL via
+# -Win11Url.  Otherwise it opens the official download page so you can
+# authenticate, pick your preferred edition (for example "Windows 11
+# EnglishInternational x64"), and then save the file to $Win11Iso.  If you
+# download a file with a different name (e.g. Win11_23H2_EnglishInternational_x64.iso),
+# simply rename it to match $Win11Iso or adjust your .env ISO_DIR accordingly.
 Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise'
 
 # Nessus (gated)
+#
+# Tenable’s Nessus downloads require you to sign up for a Nessus Essentials key
+# before the download link becomes available.  If no direct URL is provided
+# via -NessusUrl, the installer will open the Nessus Essentials registration
+# page.  Register with a disposable email address, obtain the download link and
+# save the .deb package into your ISO_DIR.  After placing the file, press
+# Enter when prompted to continue.
 Ensure-OrOpenVendor -OutFile $NessusDeb -UrlIfAny $NessusUrl -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials'
+
+# Unified prompt: if any manual downloads were required, prompt once at the end
+if ($script:manualFilesNeeded) {
+    Write-Host "Press Enter after you have downloaded and placed all required files to continue..." -ForegroundColor Yellow
+    Read-Host | Out-Null
+    $script:manualFilesNeeded = $false
+}
