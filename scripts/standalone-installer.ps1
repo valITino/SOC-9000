@@ -13,7 +13,8 @@ param(
     [switch]$SkipPrereqs,
     [switch]$SkipClone,
     [switch]$SkipIsoDownload,
-    [switch]$SkipBringUp
+    [switch]$SkipBringUp,
+    [switch]$SkipHashCheck
 )
 
 Set-StrictMode -Version Latest
@@ -98,7 +99,7 @@ function Test-Packer {
     return $true
 }
 
-function Invoke-PowerShellScript {
+function Run-PowerShellScript {
     param(
         [Parameter(Mandatory)] [string]$ScriptPath,
         [string[]]$Arguments = @()
@@ -130,7 +131,7 @@ if (-not $SkipPrereqs) {
             $prereqPath = Join-Path $ScriptsDir 'install-prereqs.ps1'
             if (Test-Path $prereqPath) {
                 try {
-                    Invoke-PowerShellScript -ScriptPath $prereqPath
+                    Run-PowerShellScript -ScriptPath $prereqPath
                 } catch {
                     Write-Error "Prerequisite installation script failed. Aborting."
                     exit 1
@@ -139,7 +140,7 @@ if (-not $SkipPrereqs) {
                 $tempPrereq = Join-Path ([System.IO.Path]::GetTempPath()) 'install-prereqs.ps1'
                 Set-Content -Path $tempPrereq -Value $EmbeddedPrereqs -Encoding UTF8
                 try {
-                    Invoke-PowerShellScript -ScriptPath $tempPrereq
+                    Run-PowerShellScript -ScriptPath $tempPrereq
                 } catch {
                     Write-Error "Prerequisite installation script failed. Aborting."
                     exit 1
@@ -206,13 +207,80 @@ if (-not (Test-Path ".env")) {
 }
 
 # Download ISOs
+$isoDir = Join-Path $InstallDir 'isos'
+if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
 if (-not $SkipIsoDownload) {
-    $isoDir = Join-Path $InstallDir 'isos'
-    if (-not (Test-Path $isoDir)) { New-Item -ItemType Directory -Path $isoDir -Force | Out-Null }
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
-                Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+        Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+        Write-Host "Note: If pfSense/Win11/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
     }
+}
+
+# --- Download Summary ---
+$requiredFiles = @(
+    @{ Name = 'ubuntu-22.04.iso';          Path = Join-Path $isoDir 'ubuntu-22.04.iso' },
+    @{ Name = 'pfsense.iso';               Path = Join-Path $isoDir 'pfsense.iso' },
+    @{ Name = 'win11-eval.iso';            Path = Join-Path $isoDir 'win11-eval.iso' },
+    @{ Name = 'nessus_latest_amd64.deb';   Path = Join-Path $isoDir 'nessus_latest_amd64.deb' }
+)
+
+Write-Host "`n== Download Summary ==" -ForegroundColor Cyan
+$missingCount = 0
+foreach ($file in $requiredFiles) {
+    if (Test-Path $file.Path) {
+        $sizeMB = [math]::Round((Get-Item $file.Path).Length / 1MB, 1)
+        Write-Host ("[OK] {0} - {1} MB" -f $file.Name, $sizeMB) -ForegroundColor Green
+    } else {
+        Write-Host ("[MISSING] {0}" -f $file.Name) -ForegroundColor Red
+        $missingCount++
+    }
+}
+
+if ($missingCount -gt 0) {
+    Write-Host "`nSome files are missing. Please download or copy them into: $isoDir" -ForegroundColor Yellow
+    Write-Host "Then re-run the installer. Skipping checksum validation because not all files are present." -ForegroundColor Yellow
+    $skipValidationDueToMissing = $true
+} else {
+    $skipValidationDueToMissing = $false
+}
+
+# Optional reminder after gated downloads
+Write-Host "Note: If a file was opened in the browser (gated/expiring), save it to: $isoDir and re-run if needed." -ForegroundColor Yellow
+
+# --- Checksum validation (auto, only if everything exists) ---
+if (-not $SkipHashCheck -and -not $skipValidationDueToMissing) {
+    $verifyScript   = Join-Path $ScriptsDir 'verify-hashes.ps1'
+    $checksumsIso   = Join-Path $isoDir 'checksums.txt'
+    $checksumsRoot  = Join-Path $ProjectRoot 'checksums.txt'
+    $checksumsPath  = $null
+
+    if (Test-Path $checksumsIso)      { $checksumsPath = $checksumsIso }
+    elseif (Test-Path $checksumsRoot) { $checksumsPath = $checksumsRoot }
+
+    if (Test-Path $verifyScript) {
+        if ($checksumsPath) {
+            Write-Host "Validating downloads against checksums: $checksumsPath" -ForegroundColor Cyan
+            Run-PowerShellScript -ScriptPath $verifyScript -Arguments @('-IsoDir', $isoDir, '-ChecksumsPath', $checksumsPath, '-Strict')
+            $code = $LASTEXITCODE
+            if ($code -ne 0) {
+                Write-Error "Checksum validation failed (exit code $code). Fix mismatches or run with -SkipHashCheck."
+                exit 1
+            } else {
+                Write-Host "Checksum validation passed." -ForegroundColor Green
+            }
+        } else {
+            Write-Warning "No checksums.txt found. Creating a template in: $checksumsIso"
+            Run-PowerShellScript -ScriptPath $verifyScript -Arguments @('-IsoDir', $isoDir, '-OutPath', $checksumsIso)
+            Write-Host "Tip: Fill $checksumsIso with vendor SHA256 values, then re-run the installer for strict validation." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Warning "verify-hashes.ps1 not found in scripts/. Skipping checksum validation."
+    }
+} elseif ($SkipHashCheck) {
+    Write-Host "Skipping checksum validation (-SkipHashCheck)." -ForegroundColor Yellow
+} else {
+    Write-Host "Checksum validation skipped because some files are missing." -ForegroundColor Yellow
 }
 
 # Update .env paths
@@ -236,7 +304,7 @@ if (Test-Path $envPath) {
 if (-not $SkipBringUp) {
     if (Test-Packer) {
         if ($PSCmdlet.ShouldProcess("Bring up lab")) {
-            Invoke-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
+            Run-PowerShellScript -ScriptPath (Join-Path $ScriptsDir 'lab-up.ps1')
         }
     } else {
         Write-Warning "Skipping lab bring-up because Packer is missing."
