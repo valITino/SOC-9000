@@ -13,8 +13,7 @@ param(
     [switch]$SkipPrereqs,
     [switch]$SkipClone,
     [switch]$SkipIsoDownload,
-    [switch]$SkipBringUp,
-    [switch]$SkipHashCheck
+    [switch]$SkipBringUp
 )
 
 Set-StrictMode -Version Latest
@@ -307,49 +306,10 @@ foreach ($file in $requiredFiles) {
 
 if ($missingCount -gt 0) {
     Write-Host "`nSome files are missing. Please download or copy them into: $isoDir" -ForegroundColor Yellow
-    Write-Host "Then re-run the installer. Skipping checksum validation because not all files are present." -ForegroundColor Yellow
-    $skipValidationDueToMissing = $true
-} else {
-    $skipValidationDueToMissing = $false
 }
 
 # Optional reminder after gated downloads
 Write-Host "Note: If a file was opened in the browser (gated/expiring), you may need to sign in or register on the vendor site before the download becomes available.  Save the file into: $isoDir and re-run if needed." -ForegroundColor Yellow
-
-# --- Checksum validation (auto, only if everything exists) ---
-if (-not $SkipHashCheck -and -not $skipValidationDueToMissing) {
-    $verifyScript   = Join-Path $ScriptsDir 'verify-hashes.ps1'
-    $checksumsIso   = Join-Path $isoDir 'checksums.txt'
-    $checksumsRoot  = Join-Path $ProjectRoot 'checksums.txt'
-    $checksumsPath  = $null
-
-    if (Test-Path $checksumsIso)      { $checksumsPath = $checksumsIso }
-    elseif (Test-Path $checksumsRoot) { $checksumsPath = $checksumsRoot }
-
-    if (Test-Path $verifyScript) {
-        if ($checksumsPath) {
-            Write-Host "Validating downloads against checksums: $checksumsPath" -ForegroundColor Cyan
-            Run-PowerShellScript -ScriptPath $verifyScript -Arguments @('-IsoDir', $isoDir, '-ChecksumsPath', $checksumsPath, '-Strict')
-            $code = $LASTEXITCODE
-            if ($code -ne 0) {
-                Write-Error "Checksum validation failed (exit code $code). Fix mismatches or run with -SkipHashCheck."
-                exit 1
-            } else {
-                Write-Host "Checksum validation passed." -ForegroundColor Green
-            }
-        } else {
-            Write-Warning "No checksums.txt found. Creating a template in: $checksumsIso"
-            Run-PowerShellScript -ScriptPath $verifyScript -Arguments @('-IsoDir', $isoDir, '-OutPath', $checksumsIso)
-            Write-Host "Tip: Fill $checksumsIso with vendor SHA256 values, then re-run the installer for strict validation." -ForegroundColor Yellow
-        }
-    } else {
-        Write-Warning "verify-hashes.ps1 not found in scripts/. Skipping checksum validation."
-    }
-} elseif ($SkipHashCheck) {
-    Write-Host "Skipping checksum validation (-SkipHashCheck)." -ForegroundColor Yellow
-} else {
-    Write-Host "Checksum validation skipped because some files are missing." -ForegroundColor Yellow
-}
 
 # Update .env paths
 $envPath = Join-Path $RepoDir '.env'

@@ -35,8 +35,6 @@ The lab requires several ISO and installer files that are **not included** in th
 - Windows 11 ISO (English)
 - Nessus Essentials `.deb` (Ubuntu AMD64)
 
-Whenever possible, download the vendor-provided **SHA256 checksum files** for these images and place them next to the downloads. The installer automatically uses `*.sha256` files for verification.
-
 You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch Ubuntu automatically and open vendor pages for the rest.  From the repo root run:
 
 ```powershell

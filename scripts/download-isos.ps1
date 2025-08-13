@@ -130,25 +130,6 @@ $UbuntuIso  = Join-Path $IsoDir 'ubuntu-22.04.iso'
 # Ubuntu (static)
 Ensure-FromUrls -OutFile $UbuntuIso -Urls @($UbuntuUrl) | Out-Null
 
-# Fetch Ubuntu checksum and convert to per-file .sha256 for verify-hashes
-$ubuntuSha = "$UbuntuIso.sha256"
-if (-not (Test-Path $ubuntuSha)) {
-    try {
-        $sumUrl = ($UbuntuUrl -replace '[^/]+$', 'SHA256SUMS')
-        $tmpSha = Join-Path $IsoDir 'SHA256SUMS'
-        Invoke-WebRequest -Uri $sumUrl -OutFile $tmpSha -Headers $UA -UseBasicParsing -ErrorAction Stop
-        $pattern = [regex]::Escape((Split-Path -Leaf $UbuntuUrl))
-        $line = Select-String -Path $tmpSha -Pattern $pattern -SimpleMatch | Select-Object -First 1
-        if ($line) {
-            $hash = ($line.Line -split '\s+')[0]
-            Set-Content -Path $ubuntuSha -Value ("$hash  ubuntu-22.04.iso") -Encoding ASCII
-        }
-        Remove-Item $tmpSha -ErrorAction SilentlyContinue
-    } catch {
-        Write-Warn "Could not fetch Ubuntu checksum: $($_.Exception.Message)"
-    }
-}
-
 # pfSense: detect existing file or open vendor page
 $pf = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
 if ($pf) {
