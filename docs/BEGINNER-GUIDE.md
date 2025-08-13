@@ -133,18 +133,17 @@ The `init` target copies `.env.example` to `.env`.  Open `.env` in Notepad, adju
 
 ---
 
-## 7. Configure VMware host‑only networks
+## 7. Verify VMware host‑only networks
 
-1. Open **VMware Workstation**.
-2. Choose **Edit → Virtual Network Editor** (run as Administrator if prompted).
-3. Ensure the following host‑only networks exist:
+Run `pwsh -File .\scripts\host-prepare.ps1` to auto-create the required VMnets (uses `vmnetcfgcli.exe`). After it completes, open **VMware Workstation → Edit → Virtual Network Editor** and confirm the following networks exist:
+
    - `VMnet20` → 172.22.10.0/24 (MGMT)
    - `VMnet21` → 172.22.20.0/24 (SOC)
    - `VMnet22` → 172.22.30.0/24 (VICTIM)
    - `VMnet23` → 172.22.40.0/24 (RED)
    - `VMnet8` remains NAT (WAN)
 
-If any of the host‑only nets are missing, create them with DHCP disabled.  The `host-prepare.ps1` script will display your current adapters and highlight any missing networks.
+If a network is still missing, create it manually with DHCP disabled.
 
 ---
 

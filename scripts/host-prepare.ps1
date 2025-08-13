@@ -35,18 +35,19 @@ $vmnetcfg = FindExe "vmnetcfgcli.exe" @(
   "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
 )
 if ($vmnetcfg -and $missing) {
-  $nets = @{
-    VMnet20 = '172.22.10.0'
-    VMnet21 = '172.22.20.0'
-    VMnet22 = '172.22.30.0'
-    VMnet23 = '172.22.40.0'
-  }
-  foreach ($n in $nets.GetEnumerator()) {
-    if ($missing -contains $n.Key) {
+  $nets = @(
+    @{Name='VMnet8';  Type='nat';      Subnet='192.168.37.0'; Dhcp=$true},
+    @{Name='VMnet20'; Type='hostonly'; Subnet='172.22.10.0';  Dhcp=$false},
+    @{Name='VMnet21'; Type='hostonly'; Subnet='172.22.20.0';  Dhcp=$false},
+    @{Name='VMnet22'; Type='hostonly'; Subnet='172.22.30.0';  Dhcp=$false},
+    @{Name='VMnet23'; Type='hostonly'; Subnet='172.22.40.0';  Dhcp=$false}
+  )
+  foreach ($n in $nets) {
+    if ($missing -contains $n.Name) {
       try {
-        & $vmnetcfg --add $n.Key --type hostonly --subnet $n.Value --netmask 255.255.255.0 --dhcp no 2>$null | Out-Null
+        & $vmnetcfg --add $n.Name --type $n.Type --subnet $n.Subnet --netmask 255.255.255.0 --dhcp ($n.Dhcp ? 'yes' : 'no') 2>$null | Out-Null
       } catch {
-        Write-Warning "Failed to configure $($n.Key): $($_.Exception.Message)"
+        Write-Warning "Failed to configure $($n.Name): $($_.Exception.Message)"
       }
     }
   }
@@ -78,17 +79,23 @@ $rows = @(
 $rows | % { "{0,-16} {1}" -f $_.Item, $_.Detail }
 
 Write-Host "`nNext steps:"
-"1) Virtual Network Editor (Admin):
-   - VMnet8  : NAT (DHCP ON)
-   - VMnet20 : Host-only 172.22.10.0/24, DHCP OFF
-   - VMnet21 : Host-only 172.22.20.0/24, DHCP OFF
-   - VMnet22 : Host-only 172.22.30.0/24, DHCP OFF
-   - VMnet23 : Host-only 172.22.40.0/24, DHCP OFF"
-"2) Place downloads in ${IsoDir}:
-   - pfSense CE ISO (Netgate account required)
-   - Ubuntu 22.04 (AMD64) -> $(Join-Path $IsoDir 'ubuntu-22.04.iso')
-   - Windows 11 ISO (any filename)
-   - Nessus Essentials .deb (Ubuntu AMD64)"
-"   (Tip: run scripts\download-isos.ps1 to fetch Ubuntu automatically and open vendor pages for the rest)"
-"3) Ensure SSH key at %USERPROFILE%\.ssh\id_ed25519 (or create it)."
-"4) (Optional) Copy SSH key into WSL: scripts\copy-ssh-key-to-wsl.ps1"
+$step = 1
+if ($missing) {
+  Write-Host "${step}) Virtual Network Editor (Admin):"
+  Write-Host "   - VMnet8  : NAT (DHCP ON)"
+  Write-Host "   - VMnet20 : Host-only 172.22.10.0/24, DHCP OFF"
+  Write-Host "   - VMnet21 : Host-only 172.22.20.0/24, DHCP OFF"
+  Write-Host "   - VMnet22 : Host-only 172.22.30.0/24, DHCP OFF"
+  Write-Host "   - VMnet23 : Host-only 172.22.40.0/24, DHCP OFF"
+  $step++
+}
+Write-Host "${step}) Place downloads in ${IsoDir}:"
+Write-Host "   - pfSense CE ISO (Netgate account required)"
+Write-Host "   - Ubuntu 22.04 (AMD64) -> $(Join-Path $IsoDir 'ubuntu-22.04.iso')"
+Write-Host "   - Windows 11 ISO (any filename)"
+Write-Host "   - Nessus Essentials .deb (Ubuntu AMD64)"
+Write-Host "   (Tip: run scripts\download-isos.ps1 to fetch Ubuntu automatically and open vendor pages for the rest)"
+$step++
+Write-Host "${step}) Ensure SSH key at %USERPROFILE%\.ssh\id_ed25519 (or create it)."
+$step++
+Write-Host "${step}) (Optional) Copy SSH key into WSL: scripts\copy-ssh-key-to-wsl.ps1"
