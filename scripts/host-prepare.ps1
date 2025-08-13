@@ -29,8 +29,10 @@ $need = "VMnet8","VMnet20","VMnet21","VMnet22","VMnet23"
 $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
 $missing = $need | ? { $_ -notin $have }
 
-# Attempt automatic network creation if vmnetcfgcli.exe is available
-$vmnetcfg = FindExe "vmnetcfgcli.exe" @(
+# Attempt automatic network creation if VMware's network CLI is available
+$vmnetcfg = FindExe "vmnetcfg.exe" @(
+  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
+  "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe",
   "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfgcli.exe",
   "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
 )
