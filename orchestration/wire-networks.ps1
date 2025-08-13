@@ -20,14 +20,15 @@ function Load-Env($path=".env"){
 function Edit-Vmx($vmxPath, [hashtable]$pairs){
   if(!(Test-Path $vmxPath)){ throw "VMX not found: $vmxPath" }
   $text = Get-Content $vmxPath -Raw
-  foreach($k in $pairs.Keys){
-    $v = $pairs[$k]
-    if($text -match "(?m)^\Q$k\E\s*=\s*\".*?\""){
-      $text = [regex]::Replace($text, "(?m)^\Q$k\E\s*=\s*\".*?\"", "$k = \"$v\"")
-    } else {
-      $text += "`n$k = \"$v\""
+    foreach($k in $pairs.Keys){
+      $v = $pairs[$k]
+      $pattern = "(?m)^" + [regex]::Escape($k) + "\s*=\s*\".*?\""
+      if($text -match $pattern){
+        $text = [regex]::Replace($text, $pattern, "$k = \"$v\"")
+      } else {
+        $text += "`n$k = \"$v\""
+      }
     }
-  }
   Set-Content -Path $vmxPath -Value $text -NoNewline
 }
 

@@ -2,7 +2,8 @@
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 
 # Read .env for ISO_DIR and filenames
-$envLines = Get-Content ..\.env | Where-Object { $_ -and $_ -notmatch '^\s*#' }
+$envPath  = Join-Path (Split-Path $PSScriptRoot -Parent) '.env'
+$envLines = Get-Content $envPath | Where-Object { $_ -and $_ -notmatch '^\s*#' }
 $isoDir      = ($envLines | Where-Object { $_ -match '^ISO_DIR=' })      -replace '^ISO_DIR=', ''
 $isoUbuntu   = ($envLines | Where-Object { $_ -match '^ISO_UBUNTU=' })   -replace '^ISO_UBUNTU=', ''
 $isoWindows  = ($envLines | Where-Object { $_ -match '^ISO_WINDOWS=' })  -replace '^ISO_WINDOWS=', ''
