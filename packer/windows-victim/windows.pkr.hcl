@@ -7,12 +7,35 @@ packer {
   }
 }
 
-variable "iso_path"       { type = string, default = "E:/SOC-9000/isos/win11-eval.iso" }
-variable "vm_name"        { type = string, default = "victim-win" }
-variable "admin_password" { type = string, default = "ChangeMe_S0C9000!" }
-variable "disk_size_mb"   { type = number, default = 80000 }
-variable "cpus"           { type = number, default = 4 }
-variable "memory_mb"      { type = number, default = 8192 }
+variable "iso_path" {
+  type    = string
+  default = "E:/SOC-9000/isos/win11-eval.iso"
+}
+
+variable "vm_name" {
+  type    = string
+  default = "victim-win"
+}
+
+variable "admin_password" {
+  type    = string
+  default = "ChangeMe_S0C9000!"
+}
+
+variable "disk_size_mb" {
+  type    = number
+  default = 80000
+}
+
+variable "cpus" {
+  type    = number
+  default = 4
+}
+
+variable "memory_mb" {
+  type    = number
+  default = 8192
+}
 
 source "vmware-iso" "win11" {
   vm_name              = var.vm_name

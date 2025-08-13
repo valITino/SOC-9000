@@ -26,7 +26,7 @@ $SAN | Set-Content -Path san.cnf -Encoding ascii
 & openssl x509 -req -in wildcard.$($Domain).csr -CA lab-local-ca.crt -CAkey lab-local-ca.key -CAcreateserial -out wildcard.$($Domain).crt -days 825 -sha256 -extfile san.cnf
 
 popd
-Write-Host "Certs ready in $OutDir:"
+Write-Host "Certs ready in ${OutDir}:"
 Get-ChildItem $OutDir | Select Name,Length | Format-Table
 Write-Host "Import CA into Windows Trusted Root:"
 Write-Host "  certutil -addstore -f -enterprise -user Root `"$OutDir\lab-local-ca.crt`""

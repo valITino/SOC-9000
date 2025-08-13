@@ -8,6 +8,13 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Refresh PATH from machine and user scopes so newly installed tools are
+# immediately available without restarting PowerShell.
+function Refresh-Path {
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('Path','User')
+}
+
 $winget = Get-Command winget -ErrorAction SilentlyContinue
 if (-not $winget) {
     Write-Error "winget is not installed or not in PATH. Cannot install prerequisites."
@@ -21,6 +28,7 @@ if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
     Write-Host "PowerShell 7 not found. Installing via winget..." -ForegroundColor Cyan
     try {
         winget install --id Microsoft.PowerShell --source winget --accept-package-agreements --accept-source-agreements
+        Refresh-Path
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
             Write-Warning "winget returned exit code $LASTEXITCODE for PowerShell 7"
             $failed = $true
@@ -38,6 +46,7 @@ if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
     Write-Host "Packer not found. Installing via winget..." -ForegroundColor Cyan
     try {
         winget install --id HashiCorp.Packer --accept-package-agreements --accept-source-agreements
+        Refresh-Path
     } catch {
         Write-Warning "Failed to install Packer via winget. You may need to install it manually."
     }
@@ -50,6 +59,7 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "Git not found. Installing via winget..." -ForegroundColor Cyan
     try {
         winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements
+        Refresh-Path
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
             Write-Warning "winget returned exit code $LASTEXITCODE for Git"
             $failed = $true

@@ -44,7 +44,7 @@ SOC‑9000 offers three ways to get started, depending on your level of comfort 
    pwsh -File .\scripts\lab-up.ps1
    ```
 
-   This method is ideal if you don’t want to use Git but are comfortable running a few commands.
+   The download script fetches Ubuntu automatically and opens vendor pages for pfSense, Windows 11, and Nessus so you can download them manually. pfSense and Nessus require free accounts; a burner email works fine. Files can keep their vendor‑supplied names—the installer detects them automatically. This method is ideal if you don’t want to use Git but are comfortable running a few commands.
 3. **Git clone (contributor/developer)** — If you plan to contribute or prefer to work directly with the source repository, clone it and run the scripts yourself.  See below.
 
 ### Clone and initialize (contributor/developer path)
