@@ -29,8 +29,40 @@ $need = "VMnet8","VMnet20","VMnet21","VMnet22","VMnet23"
 $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
 $missing = $need | ? { $_ -notin $have }
 
+# Attempt automatic network creation if vmnetcfgcli.exe is available
+$vmnetcfg = FindExe "vmnetcfgcli.exe" @(
+  "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfgcli.exe",
+  "C:\Program Files\VMware\VMware Workstation\vmnetcfgcli.exe"
+)
+if ($vmnetcfg -and $missing) {
+  $nets = @{
+    VMnet20 = '172.22.10.0'
+    VMnet21 = '172.22.20.0'
+    VMnet22 = '172.22.30.0'
+    VMnet23 = '172.22.40.0'
+  }
+  foreach ($n in $nets.GetEnumerator()) {
+    if ($missing -contains $n.Key) {
+      try {
+        & $vmnetcfg --add $n.Key --type hostonly --subnet $n.Value --netmask 255.255.255.0 --dhcp no 2>$null | Out-Null
+      } catch {
+        Write-Warning "Failed to configure $($n.Key): $($_.Exception.Message)"
+      }
+    }
+  }
+  $have = Get-NetAdapter -Physical:$false -ErrorAction SilentlyContinue | % Name
+  $missing = $need | ? { $_ -notin $have }
+}
+
 # WSL / Ansible (best effort)
 $wsl = (wsl -l -v 2>$null) -join "`n"
+if (-not $wsl) {
+  try {
+    Write-Host "Installing WSL Ubuntu-22.04..." -ForegroundColor Cyan
+    wsl --install -d Ubuntu-22.04 2>$null | Out-Null
+    $wsl = (wsl -l -v 2>$null) -join "`n"
+  } catch {}
+}
 $ans = try { wsl -e bash -lc "ansible --version | head -n1" 2>$null } catch { "" }
 
 # Output

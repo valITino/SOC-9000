@@ -12,6 +12,8 @@ $ErrorActionPreference = 'Stop'
 # Nudge TLS12 for older hosts
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
+$UA = @{ 'User-Agent' = 'SOC-9000/installer' }
+
 function Write-Info($m){ Write-Host $m -ForegroundColor Cyan }
 function Write-Good($m){ Write-Host $m -ForegroundColor Green }
 function Write-Warn($m){ Write-Warning $m }
@@ -54,15 +56,14 @@ function Invoke-Download {
         [int]$MaxTries = 3,
         [int]$TimeoutSec = 300
     )
-    $ua = @{ 'User-Agent' = 'SOC-9000/installer' }
     for ($i=1; $i -le $MaxTries; $i++) {
         try {
             Write-Info "[*] Downloading $(Split-Path -Leaf $OutFile) (try $i/$MaxTries)..."
-            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $UA -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
 
             # Best-effort content-type check using a lightweight HEAD request
             try {
-                $head = Invoke-WebRequest -Method Head -Uri $Uri -Headers $ua -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+                $head = Invoke-WebRequest -Method Head -Uri $Uri -Headers $UA -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
                 $ct = $head.Headers['Content-Type']
                 if ($ct -and -not ($AllowedIsoContentTypes -contains $ct)) {
                     Write-Warn "Downloaded but content-type '$ct' is unusual for ISO; keeping file."
@@ -128,6 +129,25 @@ $UbuntuIso  = Join-Path $IsoDir 'ubuntu-22.04.iso'
 
 # Ubuntu (static)
 Ensure-FromUrls -OutFile $UbuntuIso -Urls @($UbuntuUrl) | Out-Null
+
+# Fetch Ubuntu checksum and convert to per-file .sha256 for verify-hashes
+$ubuntuSha = "$UbuntuIso.sha256"
+if (-not (Test-Path $ubuntuSha)) {
+    try {
+        $sumUrl = ($UbuntuUrl -replace '[^/]+$', 'SHA256SUMS')
+        $tmpSha = Join-Path $IsoDir 'SHA256SUMS'
+        Invoke-WebRequest -Uri $sumUrl -OutFile $tmpSha -Headers $UA -UseBasicParsing -ErrorAction Stop
+        $pattern = [regex]::Escape((Split-Path -Leaf $UbuntuUrl))
+        $line = Select-String -Path $tmpSha -Pattern $pattern -SimpleMatch | Select-Object -First 1
+        if ($line) {
+            $hash = ($line.Line -split '\s+')[0]
+            Set-Content -Path $ubuntuSha -Value ("$hash  ubuntu-22.04.iso") -Encoding ASCII
+        }
+        Remove-Item $tmpSha -ErrorAction SilentlyContinue
+    } catch {
+        Write-Warn "Could not fetch Ubuntu checksum: $($_.Exception.Message)"
+    }
+}
 
 # pfSense: detect existing file or open vendor page
 $pf = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
