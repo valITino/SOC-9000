@@ -37,10 +37,21 @@ function Find-ChecksumsFile {
 }
 
 function Get-ActualHashes {
-    param([string]$IsoDir,[string[]]$Candidates)
+    param(
+        [string]$IsoDir,
+        [string[]]$Candidates,
+        [hashtable]$AltPatterns
+    )
     $results = @()
+    $files = Get-ChildItem -Path $IsoDir -File -ErrorAction SilentlyContinue
     foreach ($name in $Candidates) {
         $path = Join-Path $IsoDir $name
+        if (-not (Test-Path $path) -and $AltPatterns.ContainsKey($name)) {
+            $pat = $AltPatterns[$name]
+            $match = $files | Where-Object { $_.Name -match $pat } | Select-Object -First 1
+            if ($match) { $path = $match.FullName }
+        }
+
         if (Test-Path $path) {
             $h = Get-FileHash -Algorithm SHA256 -Path $path
             $results += [pscustomobject]@{
@@ -121,11 +132,19 @@ $DefaultFiles = @(
   'nessus_latest_amd64.deb'
 )
 
+# Patterns to locate vendor-named files when canonical names are absent
+$AltPatterns = @{
+    'ubuntu-22.04.iso'       = '(?i)^ubuntu-22\.04.*\.iso$'
+    'pfsense.iso'            = '(?i)(pfsense|netgate).*\.iso$'
+    'win11-eval.iso'         = '(?i).*win(dows)?[^\\w]*11.*\.iso$'
+    'nessus_latest_amd64.deb' = '(?i)^nessus.*amd64.*\.deb$'
+}
+
 $ChecksumsPath = Find-ChecksumsFile -IsoDir $IsoDir -Given $ChecksumsPath
 
 if ($OutPath) {
     # Emit actual hashes file for whatever exists
-    $actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $DefaultFiles
+    $actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $DefaultFiles -AltPatterns $AltPatterns
     $lines = @()
     foreach ($a in $actual) {
         if ($a.Exists) {
@@ -171,7 +190,7 @@ foreach ($k in $Expect.Keys) { [void]$AllNames.Add($k) }
 foreach ($d in $DefaultFiles) { [void]$AllNames.Add($d) }
 $Candidates = @($AllNames)
 
-$Actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $Candidates
+$Actual = Get-ActualHashes -IsoDir $IsoDir -Candidates $Candidates -AltPatterns $AltPatterns
 
 # Compare
 $rows = @()

@@ -58,11 +58,19 @@ function Invoke-Download {
     for ($i=1; $i -le $MaxTries; $i++) {
         try {
             Write-Info "[*] Downloading $(Split-Path -Leaf $OutFile) (try $i/$MaxTries)..."
-            $resp = Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -PassThru -ErrorAction Stop
-            $ct = $resp.Headers['Content-Type']
-            if ($ct -and -not ($AllowedIsoContentTypes -contains $ct)) {
-                Write-Warn "Downloaded but content-type '$ct' is unusual for ISO; keeping file."
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+
+            # Best-effort content-type check using a lightweight HEAD request
+            try {
+                $head = Invoke-WebRequest -Method Head -Uri $Uri -Headers $ua -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+                $ct = $head.Headers['Content-Type']
+                if ($ct -and -not ($AllowedIsoContentTypes -contains $ct)) {
+                    Write-Warn "Downloaded but content-type '$ct' is unusual for ISO; keeping file."
+                }
+            } catch {
+                Write-Warn "Could not inspect headers: $($_.Exception.Message)"
             }
+
             if ((Test-Path $OutFile) -and ((Get-Item $OutFile).Length -gt 10MB)) {
                 $mb = [math]::Round((Get-Item $OutFile).Length/1MB,1)
                 Write-Good "[+] Saved $(Split-Path -Leaf $OutFile) ($mb MB)"
