@@ -1,6 +1,6 @@
 # Rebuild a single SOC-9000 hosts block based on current cluster state
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
-function K { param([Parameter(ValueFromRemainingArguments)]$a) kubectl @a }
+function K { kubectl $args }
 
 $entries = @()
 # Traefik (k3s default namespace)
