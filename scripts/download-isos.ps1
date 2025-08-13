@@ -3,14 +3,7 @@ param(
     [string]$IsoDir,
 
     # Optional overrides; can also be provided via .env
-    [string]$UbuntuUrl  = $null,
-    # pfSense ISO: if provided, the script will attempt to download from this URL.  If omitted,
-    # the pfSense download page will be opened directly for a manual download.
-    [string]$PfSenseUrl = $null,
-    # Windows 11 ISO: provide a direct download URL to attempt an automated fetch.
-    [string]$Win11Url   = $null,
-    # Nessus package: provide a direct download URL to attempt an automated fetch.
-    [string]$NessusUrl  = $null
+    [string]$UbuntuUrl  = $null
 )
 
 Set-StrictMode -Version Latest
@@ -45,13 +38,9 @@ New-Item -ItemType Directory -Path $IsoDir -Force | Out-Null
 # Defaults (can be overridden by params or .env)
 if (-not $UbuntuUrl)  { $UbuntuUrl  = 'https://releases.ubuntu.com/jammy/ubuntu-22.04.5-live-server-amd64.iso' }
 
-# pfSense downloads previously attempted to use multiple mirrors to fetch the ISO.
-# In practice these URLs often fail due to DNS or certificate issues.  To simplify
-# the user experience, we no longer try a series of mirrors.  Instead, if a
-# specific URL is provided via -PfSenseUrl we will attempt to download from it;
-# otherwise we immediately open the pfSense vendor page so the user can choose
-# their nearest mirror manually.  See the pfSense documentation for details.
-$pfMirrors = @()
+# pfSense, Windows 11 and Nessus require gated or expiring URLs.  We no longer
+# attempt automatic downloads for these files; instead the script immediately
+# opens the vendor page so the user can obtain the latest image manually.
 
 $AllowedIsoContentTypes = @(
   'application/x-iso9660-image','application/octet-stream',
@@ -69,7 +58,7 @@ function Invoke-Download {
     for ($i=1; $i -le $MaxTries; $i++) {
         try {
             Write-Info "[*] Downloading $(Split-Path -Leaf $OutFile) (try $i/$MaxTries)..."
-            $resp = Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $ua -TimeoutSec $TimeoutSec -UseBasicParsing -PassThru -ErrorAction Stop
             $ct = $resp.Headers['Content-Type']
             if ($ct -and -not ($AllowedIsoContentTypes -contains $ct)) {
                 Write-Warn "Downloaded but content-type '$ct' is unusual for ISO; keeping file."
@@ -101,65 +90,60 @@ function Ensure-FromUrls {
     return $false
 }
 
-function Ensure-OrOpenVendor {
+function Find-FirstMatchingFile {
     param(
-        [Parameter(Mandatory)] [string]$OutFile,
-        [string]$UrlIfAny,
-        [string]$VendorPage
+        [Parameter(Mandatory)] [string]$Dir,
+        [Parameter(Mandatory)] [string[]]$Patterns
     )
-    # If the file already exists, nothing to do
-    if (Test-Path $OutFile) {
-        Write-Good "[=] Exists: $(Split-Path -Leaf $OutFile)"
-        return
+    if (-not (Test-Path $Dir)) { return $null }
+    $files = Get-ChildItem -Path $Dir -File -ErrorAction SilentlyContinue
+    foreach ($p in $Patterns) {
+        $m = $files | Where-Object { $_.Name -match $p } | Select-Object -First 1
+        if ($m) { return $m }
     }
-    # Attempt direct download if a URL override was provided
-    if ($UrlIfAny) {
-        if (Invoke-Download -Uri $UrlIfAny -OutFile $OutFile) { return }
-    }
-    # Fall back to manual download: open the vendor page and defer prompting
-    Write-Warn "$(Split-Path -Leaf $OutFile) requires a gated or expiring URL. Opening vendor page…"
-    if ($VendorPage) {
-        try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" }
-    }
-    Write-Info "Please download manually and place it at: $OutFile"
-    # Record that a manual download is needed; the unified prompt at the end
-    # will wait for the user to press Enter once all manual downloads are complete.
+    return $null
+}
+
+function Open-VendorPage {
+    param(
+        [Parameter(Mandatory)] [string]$VendorPage,
+        [Parameter(Mandatory)] [string]$DisplayName
+    )
+    Write-Warn "$DisplayName requires manual download. Opening vendor page…"
+    try { Start-Process $VendorPage } catch { Write-Warn "Could not open browser: $($_.Exception.Message)" }
+    Write-Info "Save the file into $IsoDir with its original name."
     $script:manualFilesNeeded = $true
 }
 
 # Targets
 $UbuntuIso  = Join-Path $IsoDir 'ubuntu-22.04.iso'
-$PfSenseIso = Join-Path $IsoDir 'pfsense.iso'
-$Win11Iso   = Join-Path $IsoDir 'win11-eval.iso'
-$NessusDeb  = Join-Path $IsoDir 'nessus_latest_amd64.deb'
 
 # Ubuntu (static)
 Ensure-FromUrls -OutFile $UbuntuIso -Urls @($UbuntuUrl) | Out-Null
 
-# pfSense: open vendor page for manual download by default.  If a PfSenseUrl
-# override is supplied, attempt a direct download; otherwise open the pfSense
-# download page for the user.
-Ensure-OrOpenVendor -OutFile $PfSenseIso -UrlIfAny $PfSenseUrl -VendorPage 'https://www.pfsense.org/download/'
+# pfSense: detect existing file or open vendor page
+$pf = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
+if ($pf) {
+    Write-Good "[=] Exists: $($pf.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.pfsense.org/download/' -DisplayName 'pfSense ISO (Netgate account required; burner email OK)'
+}
 
-# Windows 11 ISO (International)
-# The official Microsoft download page requires you to choose an edition and language
-# and provides a time-limited URL for the ISO.  If you provide a direct URL via
-# -Win11Url, the installer will attempt to download it.  Otherwise the script
-# opens the official download page where you can select "Windows 11" and language
-# "English International" (x64) and save the ISO.  Once downloaded, copy or
-# rename the file into ISO_DIR.  If you download a file with a different name
-# (e.g. Win11_23H2_EnglishInternational_x64.iso), simply rename it to match
-# $Win11Iso or adjust your .env ISO_DIR accordingly.
-Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11'
+# Windows 11 ISO
+$win = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i).*win(dows)?[^\\w]*11.*\.iso$')
+if ($win) {
+    Write-Good "[=] Exists: $($win.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11' -DisplayName 'Windows 11 ISO'
+}
 
-# Nessus (gated)
-# Tenable’s Nessus downloads require you to sign up for a Nessus Essentials key
-# before the download link becomes available.  If no direct URL is provided
-# via -NessusUrl, the installer will open the Nessus Essentials registration
-# page.  Register with a disposable email address, obtain the download link and
-# save the .deb package into your ISO_DIR.  After placing the file, press
-# Enter when prompted to continue.
-Ensure-OrOpenVendor -OutFile $NessusDeb -UrlIfAny $NessusUrl -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials'
+# Nessus package
+$nes = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)^nessus.*amd64.*\.deb$')
+if ($nes) {
+    Write-Good "[=] Exists: $($nes.Name)"
+} else {
+    Open-VendorPage -VendorPage 'https://www.tenable.com/products/nessus/nessus-essentials' -DisplayName 'Nessus Essentials .deb (registration required; burner email OK)'
+}
 
 # Unified prompt: if any manual downloads were required, prompt once at the end
 if ($script:manualFilesNeeded) {

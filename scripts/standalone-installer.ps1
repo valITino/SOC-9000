@@ -117,16 +117,6 @@ function Test-Packer {
 # where to save the evaluation ISO.  Users can avoid renaming by simply
 # placing any ISO whose name contains "win" and "11" in the isos folder; the
 # summary below will detect it automatically.
-function Get-Win11IsoName {
-    param([string]$IsoDir)
-    $patterns = @('win11*.iso','windows11*.iso','win*.iso','windows*.iso')
-    foreach ($pat in $patterns) {
-        $file = Get-ChildItem -Path $IsoDir -Filter $pat -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '11' } | Sort-Object -Property Length -Descending | Select-Object -First 1
-        if ($file) { return $file.Name }
-    }
-    # Default target name for the installer to use when saving an evaluation ISO
-    return 'win11-eval.iso'
-}
 
 function Run-PowerShellScript {
     param(
@@ -242,19 +232,65 @@ if (-not $SkipIsoDownload) {
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
         Run-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
-        Write-Host "Note: If pfSense/Windows/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
+        # Inform the user that pfSense, Windows 11 and Nessus downloads are manual only.
+        # pfSense and Nessus require free vendor accounts; using a disposable email is fine.
+        # Files may retain their vendor names—the installer locates them automatically.
+        Write-Host "Note: pfSense/Win11/Nessus require manual downloads (pfSense/Nessus need free accounts; burner email works). Their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
     }
 }
 
+# --- Dynamic ISO name detection helpers (run after $isoDir is defined) ---
+function Find-FirstMatchingFile {
+    param(
+        [Parameter(Mandatory)] [string]$Dir,
+        [Parameter(Mandatory)] [string[]]$Patterns  # array of regex patterns (case-insensitive)
+    )
+    if (-not (Test-Path $Dir)) { return $null }
+    $files = Get-ChildItem -Path $Dir -File -ErrorAction SilentlyContinue
+    foreach ($p in $Patterns) {
+        $match = $files | Where-Object { $_.Name -match $p } | Select-Object -First 1
+        if ($match) { return $match }
+    }
+    return $null
+}
+
+# Windows 11: accept typical vendor/versioned names (e.g., Win11_23H2_EnglishInternational_x64.iso)
+# Match any ISO that mentions 'Windows' or 'Win' and '11' anywhere in the name.
+$Win11Detected = Find-FirstMatchingFile -Dir $isoDir -Patterns @('(?i).*win(dows)?[^\w]*11.*\.iso$')
+if ($Win11Detected) {
+    $Win11IsoPath = $Win11Detected.FullName
+    $Win11Display = $Win11Detected.Name
+} else {
+    $Win11IsoPath = Join-Path $isoDir 'win11-eval.iso'  # legacy default name
+    $Win11Display = 'win11-eval.iso'
+}
+
+# pfSense: accept vendor-style names (pfSense-CE-<ver>-RELEASE-amd64.iso) or fallback to pfsense.iso
+$PfSenseDetected = Find-FirstMatchingFile -Dir $isoDir -Patterns @('(?i)(pfsense|netgate).*\.iso$')
+if ($PfSenseDetected) {
+    $PfSenseIsoPath = $PfSenseDetected.FullName
+    $PfSenseDisplay = $PfSenseDetected.Name
+} else {
+    $PfSenseIsoPath = Join-Path $isoDir 'pfsense.iso'
+    $PfSenseDisplay = 'pfsense.iso'
+}
+
+# Nessus: accept versioned/generic names (e.g., nessus-10.x.x-amd64.deb)
+$NessusDetected = Find-FirstMatchingFile -Dir $isoDir -Patterns @('(?i)^nessus.*amd64.*\.deb$')
+if ($NessusDetected) {
+    $NessusDebPath = $NessusDetected.FullName
+    $NessusDisplay = $NessusDetected.Name
+} else {
+    $NessusDebPath = Join-Path $isoDir 'nessus_latest_amd64.deb'
+    $NessusDisplay = 'nessus_latest_amd64.deb'
+}
+
 # --- Download Summary ---
-# Determine the Windows 11 ISO name dynamically.  If multiple ISOs are present
-# you may adjust this function as needed.  See Get-Win11IsoName above.
-$winIsoName  = Get-Win11IsoName -IsoDir $isoDir
 $requiredFiles = @(
-    @{ Name = 'ubuntu-22.04.iso';          Path = Join-Path $isoDir 'ubuntu-22.04.iso' },
-    @{ Name = 'pfsense.iso';               Path = Join-Path $isoDir 'pfsense.iso' },
-    @{ Name = $winIsoName;                 Path = Join-Path $isoDir $winIsoName },
-    @{ Name = 'nessus_latest_amd64.deb';   Path = Join-Path $isoDir 'nessus_latest_amd64.deb' }
+    @{ Name = 'ubuntu-22.04.iso'; Path = Join-Path $isoDir 'ubuntu-22.04.iso' },
+    @{ Name = $PfSenseDisplay;   Path = $PfSenseIsoPath },
+    @{ Name = $Win11Display;     Path = $Win11IsoPath },
+    @{ Name = $NessusDisplay;    Path = $NessusDebPath }
 )
 
 Write-Host "`n== Download Summary ==" -ForegroundColor Cyan
@@ -327,6 +363,9 @@ if (Test-Path $envPath) {
         elseif ($line -match '^(ISO_DIR)=')       { $updated += "ISO_DIR=" + (Join-Path $InstallDir 'isos') }
         elseif ($line -match '^(ARTIFACTS_DIR)=') { $updated += "ARTIFACTS_DIR=" + (Join-Path $InstallDir 'artifacts') }
         elseif ($line -match '^(TEMP_DIR)=')      { $updated += "TEMP_DIR="      + (Join-Path $InstallDir 'temp') }
+        elseif ($line -match '^(ISO_PFSENSE)=')   { $updated += "ISO_PFSENSE=$PfSenseDisplay" }
+        elseif ($line -match '^(ISO_UBUNTU)=')    { $updated += "ISO_UBUNTU=ubuntu-22.04.iso" }
+        elseif ($line -match '^(ISO_WINDOWS)=')   { $updated += "ISO_WINDOWS=$Win11Display" }
         else                                      { $updated += $line }
     }
     $updated | Set-Content $envPath -Encoding ASCII
