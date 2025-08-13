@@ -1,6 +1,10 @@
 # End-to-end bring-up for SOC-9000
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
-function Run($p){ Write-Host "`n== $p" -ForegroundColor Cyan; & pwsh -NoProfile -ExecutionPolicy Bypass -File $p }
+function Run($p){
+  Write-Host "`n== $p" -ForegroundColor Cyan
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $p
+  if ($LASTEXITCODE -ne 0) { throw "Script $p exited with code $LASTEXITCODE" }
+}
 
 # 0) Env + preflight
 if (!(Test-Path ".env")) { Copy-Item .env.example .env -Force; throw "Edit .env then re-run." }
