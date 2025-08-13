@@ -148,17 +148,17 @@ if (-not (Ensure-FromUrls -OutFile $PfSenseIso -Urls $pfList)) {
 }
 
 # -----------------------------------------------------------------------------
-# Windows 11 ISO (eval or other)
+# Windows 11 ISO (International)
 #
-# The Microsoft Evaluation Center requires you to sign in and accept terms before
-# a download link is provided.  The installer script attempts to download the
-# evaluation ISO automatically if you provide a valid, non-expiring URL via
-# -Win11Url.  Otherwise it opens the official download page so you can
-# authenticate, pick your preferred edition (for example "Windows 11
-# EnglishInternational x64"), and then save the file to $Win11Iso.  If you
+# The official Microsoft download page requires you to choose a Windows 11
+# edition and language and provides a time-limited URL for the ISO.  If you
+# provide a direct URL via -Win11Url, the installer will attempt to download
+# it.  Otherwise the script opens the official download page where you can
+# select "Windows 11" and language "English International" (x64) and save the
+# ISO.  Once downloaded, copy or rename the file into ISO_DIR.  If you
 # download a file with a different name (e.g. Win11_23H2_EnglishInternational_x64.iso),
 # simply rename it to match $Win11Iso or adjust your .env ISO_DIR accordingly.
-Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise'
+Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11'
 
 # Nessus (gated)
 #

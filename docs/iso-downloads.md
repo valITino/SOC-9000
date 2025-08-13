@@ -38,13 +38,16 @@ evaluation ISO only if you supply a non‑expiring URL via the `-Win11Url`
 parameter.  For most users, the recommended approach is to download an
 official Windows 11 ISO manually:
 
-1. Visit the Microsoft Evaluation Center at
-   <https://www.microsoft.com/en-us/evalcenter/evaluate-windows-11-enterprise>.
-2. Sign in with your Microsoft account and select the **Windows 11
-   Enterprise** edition you require (for example, "Windows 11 EnglishInternational x64").
-3. Download the ISO.  The file name may differ from the default
+1. Navigate to the Microsoft Windows 11 download page at
+   <https://www.microsoft.com/de-de/software-download/windows11>.
+2. Under **Download Windows 11 Disk Image (ISO)**, select **Windows 11** and
+   choose your preferred language (e.g. **English International**) for the x64
+   architecture.
+3. After you click **Download**, the page will generate a unique URL valid for
+   24 hours.  Sign in with your Microsoft account if prompted.
+4. Download the ISO.  The file name may differ from the default
    `win11-eval.iso`, for example `Win11_23H2_EnglishInternational_x64.iso`.
-4. Copy or rename the file into your `ISO_DIR`.  The installer will attempt to
+5. Copy or rename the file into your `ISO_DIR`.  The installer will attempt to
    detect any ISO whose name contains "win" and "11" automatically.  If
    multiple Windows 11 ISOs exist, rename the one you intend to use to
    `win11-eval.iso` for clarity.
@@ -52,12 +55,14 @@ official Windows 11 ISO manually:
 ## Nessus Essentials
 
 Tenable requires you to register for a free Nessus Essentials activation key
-before downloading the installation package.  Use a disposable email address
-if desired.  To download the `.deb` package for Ubuntu:
+before downloading the installation package.  Use a disposable (burner) email
+address if you prefer not to receive marketing emails.  To download the
+`.deb` package for Ubuntu:
 
-1. Go to <https://www.tenable.com/products/nessus/nessus-essentials> and
-   complete the registration form to receive an activation key.
-2. Follow the download link provided after registration and select the Linux
+1. Visit <https://www.tenable.com/products/nessus/nessus-essentials> and fill
+   out the registration form to obtain an activation key.  A burner email
+   address can be used.
+2. After registration, follow the download link provided and select the Linux
    (Ubuntu/Debian) installer.
 3. Save the file into your `ISO_DIR` as **`nessus_latest_amd64.deb`** (rename
    the file if the vendor uses a versioned name).
