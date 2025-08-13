@@ -212,6 +212,7 @@ if (-not $SkipIsoDownload) {
     if ($PSCmdlet.ShouldProcess("Download ISOs to $isoDir")) {
         $downloadIsos = Join-Path $ScriptsDir 'download-isos.ps1'
                 Invoke-PowerShellScript -ScriptPath $downloadIsos -Arguments @('-IsoDir', $isoDir)
+                Write-Host "Note: If pfSense/Win11/Nessus did not download automatically, their official pages were opened. Save the files into: $isoDir and re-run." -ForegroundColor Yellow
     }
 }
 
