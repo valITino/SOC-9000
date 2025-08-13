@@ -42,11 +42,11 @@ You need enough CPU and memory to run several VMs concurrently.  More is always 
 The lab requires several OS images that are **not** stored in this repository.  A helper script is provided to download them for you:
 
 - **Ubuntu 22.04 ISO** – base for ContainerHost and WSL
-- **Windows 11 Evaluation ISO** – base for the victim VM (trial license)
+- **Windows 11 ISO** – base for the victim VM
 - **pfSense ISO** – firewall/router installer
 - **Nessus Essentials (.deb)** – optional for the Nessus VM path
 
-To download these automatically:
+To fetch the images:
 
 1. Open **PowerShell as Administrator** and navigate to your cloned repo:
    ```powershell
@@ -57,7 +57,7 @@ To download these automatically:
    pwsh -File .\scripts\download-isos.ps1
    ```
 
-The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads each file if it does not already exist, and verifies basic properties (size and type).  Direct download URLs are embedded in the script; you can update them if new releases become available.  If you prefer to supply your own ISOs, you can place them in the folder and the script will skip downloading.
+The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads Ubuntu automatically if it is missing, and opens vendor pages for pfSense, Windows 11, and Nessus so you can download them manually. pfSense and Nessus require free accounts; a burner email works fine. You can keep the original file names—the installer detects them automatically. If you prefer to supply your own files, place them in the folder and the script will skip them.
 
 ### One‑click installer
 
@@ -133,18 +133,17 @@ The `init` target copies `.env.example` to `.env`.  Open `.env` in Notepad, adju
 
 ---
 
-## 7. Configure VMware host‑only networks
+## 7. Verify VMware host‑only networks
 
-1. Open **VMware Workstation**.
-2. Choose **Edit → Virtual Network Editor** (run as Administrator if prompted).
-3. Ensure the following host‑only networks exist:
+Run `pwsh -File .\scripts\host-prepare.ps1` to auto-create the required VMnets (uses `vmnetcfgcli.exe`). After it completes, open **VMware Workstation → Edit → Virtual Network Editor** and confirm the following networks exist:
+
    - `VMnet20` → 172.22.10.0/24 (MGMT)
    - `VMnet21` → 172.22.20.0/24 (SOC)
    - `VMnet22` → 172.22.30.0/24 (VICTIM)
    - `VMnet23` → 172.22.40.0/24 (RED)
    - `VMnet8` remains NAT (WAN)
 
-If any of the host‑only nets are missing, create them with DHCP disabled.  The `host-prepare.ps1` script will display your current adapters and highlight any missing networks.
+If a network is still missing, create it manually with DHCP disabled.
 
 ---
 

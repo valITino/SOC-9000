@@ -10,24 +10,25 @@ $ErrorActionPreference = "Stop"
 function Load-Env($path=".env"){
   if(!(Test-Path $path)){ throw ".env not found. Copy .env.example to .env first." }
   Get-Content $path | ? {$_ -and $_ -notmatch '^\s*#'} | % {
-    if ($_ -match '^\s*([^=]+)=(.*)$'){
-      $name = $matches[1].Trim()
-      $env:${name} = $matches[2].Trim()
-    }
+      if ($_ -match '^\s*([^=]+)=(.*)$'){
+        $name = $matches[1].Trim()
+        Set-Item -Path "Env:$name" -Value ($matches[2].Trim())
+      }
   }
 }
 
 function Edit-Vmx($vmxPath, [hashtable]$pairs){
   if(!(Test-Path $vmxPath)){ throw "VMX not found: $vmxPath" }
   $text = Get-Content $vmxPath -Raw
-  foreach($k in $pairs.Keys){
-    $v = $pairs[$k]
-    if($text -match "(?m)^\Q$k\E\s*=\s*\".*?\""){
-      $text = [regex]::Replace($text, "(?m)^\Q$k\E\s*=\s*\".*?\"", "$k = \"$v\"")
-    } else {
-      $text += "`n$k = \"$v\""
+    foreach($k in $pairs.Keys){
+      $v = $pairs[$k]
+      $pattern = "(?m)^" + [regex]::Escape($k) + "\s*=\s*\".*?\""
+      if($text -match $pattern){
+        $text = [regex]::Replace($text, $pattern, "$k = \"$v\"")
+      } else {
+        $text += "`n$k = \"$v\""
+      }
     }
-  }
   Set-Content -Path $vmxPath -Value $text -NoNewline
 }
 

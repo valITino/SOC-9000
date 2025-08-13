@@ -1,11 +1,15 @@
 # Expose wazuh-manager via MetalLB (1514/1515 TCP). Auto-detects selector labels.
 param([string]$Ns="soc",[string]$LbIp="172.22.10.62")
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
-function K { param([Parameter(ValueFromRemainingArguments)]$a) kubectl @a }
+function K { kubectl $args }
 
 if (Test-Path ".env") {
-  (Get-Content .env | ? {$_ -and $_ -notmatch '^\s*#'}) | % {
-    if ($_ -match '^\s*([^=]+)=(.*)$'){ $env:$($matches[1].Trim())=$matches[2].Trim() }
+  (Get-Content .env | ? {$_ -and $_ -notmatch '^\s*#'}) | ForEach-Object {
+    if ($_ -match '^\s*([^=]+)=(.*)$'){
+      $name  = $matches[1].Trim()
+      $value = $matches[2].Trim()
+      Set-Item -Path "Env:$name" -Value $value
+    }
   }
   if ($env:WAZUH_MANAGER_LB_IP) { $LbIp = $env:WAZUH_MANAGER_LB_IP }
 }

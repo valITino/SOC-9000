@@ -18,6 +18,8 @@ Goal: Prepare Windows 11 + VMware Workstation for a pfSense-routed, k3s-managed,
 
 ## Networks (Virtual Network Editor)
 
+The `scripts/host-prepare.ps1` helper uses VMware's `vmnetcfgcli.exe` to create the required VMnets automatically. After running the script, verify the adapters in **Virtual Network Editor** if needed:
+
 - `VMnet8` — NAT (DHCP ON)
 - `VMnet20` — MGMT `172.22.10.0/24` (DHCP OFF)
 - `VMnet21` — SOC  `172.22.20.0/24` (DHCP OFF)
@@ -32,16 +34,16 @@ The lab requires several ISO and installer files that are **not included** in th
 
 - pfSense CE ISO (AMD64)
 - Ubuntu Server 22.04 ISO (AMD64)
-- Windows 11 Evaluation ISO (English)
+- Windows 11 ISO (English)
 - Nessus Essentials `.deb` (Ubuntu AMD64)
 
-You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch them automatically.  From the repo root run:
+You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch Ubuntu automatically and open vendor pages for the rest.  From the repo root run:
 
 ```powershell
 pwsh -File .\scripts\download-isos.ps1
 ```
 
-The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
+The script downloads Ubuntu automatically and opens vendor pages for pfSense, Windows 11, and Nessus so you can fetch them manually. pfSense and Nessus require free accounts; using a disposable email is fine. Files can keep their vendor‑supplied names—the installer detects them automatically. Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
 ## Install prerequisites
 
