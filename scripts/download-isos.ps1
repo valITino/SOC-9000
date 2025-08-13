@@ -4,9 +4,13 @@ param(
 
     # Optional overrides; can also be provided via .env
     [string]$UbuntuUrl  = $null,
-    [string]$PfSenseUrl = $null,   # If set, try this first; fallback to mirrors below
-    [string]$Win11Url   = $null,   # Expiring; open vendor page if empty
-    [string]$NessusUrl  = $null    # Gated; open vendor page if empty
+    # pfSense ISO: if provided, the script will attempt to download from this URL.  If omitted,
+    # the pfSense download page will be opened directly for a manual download.
+    [string]$PfSenseUrl = $null,
+    # Windows 11 ISO: provide a direct download URL to attempt an automated fetch.
+    [string]$Win11Url   = $null,
+    # Nessus package: provide a direct download URL to attempt an automated fetch.
+    [string]$NessusUrl  = $null
 )
 
 Set-StrictMode -Version Latest
@@ -40,13 +44,14 @@ New-Item -ItemType Directory -Path $IsoDir -Force | Out-Null
 
 # Defaults (can be overridden by params or .env)
 if (-not $UbuntuUrl)  { $UbuntuUrl  = 'https://releases.ubuntu.com/jammy/ubuntu-22.04.5-live-server-amd64.iso' }
-# NOTE: pfSense links/mirrors change; we keep a short list and also open the download page if all fail.
-$pfMirrors = @(
-  'https://mirror.pfsense.org/amd64/installer/pfSense-CE-2.7.3-RELEASE-amd64.iso',
-  'https://atxfiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso',
-  'https://frafiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso',
-  'https://nyifiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso'
-)
+
+# pfSense downloads previously attempted to use multiple mirrors to fetch the ISO.
+# In practice these URLs often fail due to DNS or certificate issues.  To simplify
+# the user experience, we no longer try a series of mirrors.  Instead, if a
+# specific URL is provided via -PfSenseUrl we will attempt to download from it;
+# otherwise we immediately open the pfSense vendor page so the user can choose
+# their nearest mirror manually.  See the pfSense documentation for details.
+$pfMirrors = @()
 
 $AllowedIsoContentTypes = @(
   'application/x-iso9660-image','application/octet-stream',
@@ -118,7 +123,7 @@ function Ensure-OrOpenVendor {
     }
     Write-Info "Please download manually and place it at: $OutFile"
     # Record that a manual download is needed; the unified prompt at the end
-    # will wait for the user to press Enter once all downloads are complete.
+    # will wait for the user to press Enter once all manual downloads are complete.
     $script:manualFilesNeeded = $true
 }
 
@@ -131,37 +136,23 @@ $NessusDeb  = Join-Path $IsoDir 'nessus_latest_amd64.deb'
 # Ubuntu (static)
 Ensure-FromUrls -OutFile $UbuntuIso -Urls @($UbuntuUrl) | Out-Null
 
-# pfSense (try override then mirrors; if all fail, open download page)
-$pfList = @()
-if ($PfSenseUrl) { $pfList += $PfSenseUrl }
-$pfList += $pfMirrors
-if (-not (Ensure-FromUrls -OutFile $PfSenseIso -Urls $pfList)) {
-    Write-Warn "pfSense ISO could not be fetched from mirrors. This can be DNS or certificate time issues."
-    Write-Info "Opening pfSense download page so you can pick a nearby mirror…"
-    try { Start-Process 'https://www.pfsense.org/download/' } catch {}
-    Write-Info "After download, save as: $PfSenseIso"
-    # pfSense downloads require you to create or sign in to a Netgate account.  Use a
-    # throwaway email if desired.  We defer the pause until the end of the
-    # script; set a flag so that a single prompt will fire when all manual
-    # downloads are complete.
-    $script:manualFilesNeeded = $true
-}
+# pfSense: open vendor page for manual download by default.  If a PfSenseUrl
+# override is supplied, attempt a direct download; otherwise open the pfSense
+# download page for the user.
+Ensure-OrOpenVendor -OutFile $PfSenseIso -UrlIfAny $PfSenseUrl -VendorPage 'https://www.pfsense.org/download/'
 
-# -----------------------------------------------------------------------------
 # Windows 11 ISO (International)
-#
-# The official Microsoft download page requires you to choose a Windows 11
-# edition and language and provides a time-limited URL for the ISO.  If you
-# provide a direct URL via -Win11Url, the installer will attempt to download
-# it.  Otherwise the script opens the official download page where you can
-# select "Windows 11" and language "English International" (x64) and save the
-# ISO.  Once downloaded, copy or rename the file into ISO_DIR.  If you
-# download a file with a different name (e.g. Win11_23H2_EnglishInternational_x64.iso),
-# simply rename it to match $Win11Iso or adjust your .env ISO_DIR accordingly.
+# The official Microsoft download page requires you to choose an edition and language
+# and provides a time-limited URL for the ISO.  If you provide a direct URL via
+# -Win11Url, the installer will attempt to download it.  Otherwise the script
+# opens the official download page where you can select "Windows 11" and language
+# "English International" (x64) and save the ISO.  Once downloaded, copy or
+# rename the file into ISO_DIR.  If you download a file with a different name
+# (e.g. Win11_23H2_EnglishInternational_x64.iso), simply rename it to match
+# $Win11Iso or adjust your .env ISO_DIR accordingly.
 Ensure-OrOpenVendor -OutFile $Win11Iso -UrlIfAny $Win11Url -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11'
 
 # Nessus (gated)
-#
 # Tenable’s Nessus downloads require you to sign up for a Nessus Essentials key
 # before the download link becomes available.  If no direct URL is provided
 # via -NessusUrl, the installer will open the Nessus Essentials registration
