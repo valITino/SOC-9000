@@ -35,13 +35,13 @@ The lab requires several ISO and installer files that are **not included** in th
 - Windows 11 Evaluation ISO (English)
 - Nessus Essentials `.deb` (Ubuntu AMD64)
 
-You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch them automatically.  From the repo root run:
+You may download these yourself and place them into `E:\SOC-9000\isos`, **or** you can use the helper script to fetch Ubuntu automatically and open vendor pages for the rest.  From the repo root run:
 
 ```powershell
 pwsh -File .\scripts\download-isos.ps1
 ```
 
-The script checks for existing files and downloads what’s missing, using known good URLs from the vendors.  Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
+The script downloads Ubuntu automatically and opens vendor pages for pfSense, Windows 11, and Nessus so you can fetch them manually. Feel free to edit `scripts/download-isos.ps1` if you need to update the URLs.
 
 ## Install prerequisites
 
