@@ -5,10 +5,10 @@
 To bring up the entire lab in one go, run:
 
 ```powershell
-make up-all
+pwsh -File .\scripts\lab-up.ps1
 ```
 
-The `make up-all` target performs these steps in order:
+`lab-up.ps1` performs these steps in order:
 
 1. Host preparation and ISO checks.
 2. Build the base images with Packer.
@@ -27,13 +27,13 @@ The `make up-all` target performs these steps in order:
 ### Tear down (stop VMs)
 
 ```powershell
-make down-all
+pwsh -File .\scripts\lab-down.ps1
 ```
 
 ### Status & URLs
 
 ```powershell
-make status
+pwsh -File .\scripts\lab-status.ps1
 ```
 
 ### Troubleshooting

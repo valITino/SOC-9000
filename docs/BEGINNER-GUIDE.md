@@ -56,10 +56,6 @@ To download these automatically:
    ```powershell
    pwsh -File .\scripts\download-isos.ps1
    ```
-   or, if you’re using `make`, simply run:
-   ```powershell
-   make download-isos
-   ```
 
 The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads each file if it does not already exist, and verifies basic properties (size and type).  Direct download URLs are embedded in the script; you can update them if new releases become available.  If you prefer to supply your own ISOs, you can place them in the folder and the script will skip downloading.
 
@@ -78,11 +74,11 @@ pwsh -File .\scripts\standalone-installer.ps1 -InstallDir "D:\Labs\SOC-9000-Pre-
 pwsh -File .\scripts\standalone-installer.ps1 -RepoDir "D:\SOC-9000" -InstallDir "D:\Labs\SOC-9000-Pre-Install"
 ```
 
-You can also build a self-contained `.exe` using the `build-exe` Make target:
+You can also build a self-contained installer script with embedded prerequisites using the build script:
 
 ```powershell
-make build-exe
-# This produces SOC-9000-installer.exe in the repo root.  Double-click it to start.
+pwsh -File .\scripts\build-installer.ps1
+# This produces SOC-9000-installer.ps1 in the repo root.  Run it with PowerShell to start.
 ```
 
 ---
@@ -96,14 +92,14 @@ make build-exe
    wsl --install -d Ubuntu-22.04
    ```
 
-2. Install the lab prerequisites (**GNU Make** and **PowerShell 7**).  A helper script is provided to detect and install these tools via winget:
+2. Install the lab prerequisites (**Git** and **PowerShell 7**).  A helper script is provided to detect and install these tools via winget:
 
    ```powershell
    cd E:\SOC-9000\SOC-9000
-   make prereqs      # or: pwsh -File .\scripts\install-prereqs.ps1
+   pwsh -File .\scripts\install-prereqs.ps1
    ```
 
-   This step ensures that both GNU Make and PowerShell 7 are available before you attempt to build the standalone installer or use other Make targets.  If the tools are already installed, the script skips them.
+   This step ensures that both Git and PowerShell 7 are available before you attempt to build the standalone installer or use other scripts.  If the tools are already installed, the script skips them.
 
 3. After WSL installs, launch **Ubuntu 22.04** from the Start menu and run:
 
@@ -130,7 +126,7 @@ The download script from step 3 will place your ISO files in `E:\SOC-9000\isos`
 ```powershell
 git clone https://github.com/valITino/SOC-9000.git E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
-make init
+Copy-Item .env.example .env
 ```
 
 The `init` target copies `.env.example` to `.env`.  Open `.env` in Notepad, adjust the ISO paths and network names if needed, and save it.
@@ -157,10 +153,10 @@ If any of the host‑only nets are missing, create them with DHCP disabled.  The
 Run one command to build and start everything:
 
 ```powershell
-make up-all
+pwsh -File .\scripts\lab-up.ps1
 ```
 
-`make up-all` orchestrates all the steps: host preparation, Packer image builds, VM network wiring, netplan application, automatic pfSense configuration, TLS generation, platform bootstrapping, app deployments, and telemetry setup.  It pauses once for you to perform the basic pfSense install.  Follow the on‑screen prompts during that pause, then press **Enter** to continue.
+`lab-up.ps1` orchestrates all the steps: host preparation, Packer image builds, VM network wiring, netplan application, automatic pfSense configuration, TLS generation, platform bootstrapping, app deployments, and telemetry setup.  It pauses once for you to perform the basic pfSense install.  Follow the on‑screen prompts during that pause, then press **Enter** to continue.
 
 ---
 

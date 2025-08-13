@@ -3,7 +3,7 @@
 <#
     This script downloads the required ISO/installer files for the SOC‑9000 lab.  It is intended
     for lab hosts running Windows with Internet access.  Files are downloaded only if they
-    are missing.  You can run this script manually or via `make download-isos`.
+    are missing.  Run this script manually to fetch required images.
 
     The default download folder is `E:\SOC-9000\isos`.  You can override this by passing
     `-IsoDir` when invoking the script.
@@ -39,7 +39,8 @@ function Download-File {
     try {
         # Some vendors require TLS 1.2
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+        $headers = @{ 'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -Headers $headers
     } catch {
         Write-Warning "Failed to download ${Url}: $_"
         return
@@ -61,15 +62,37 @@ function Download-File {
 
 # Define download URLs
 $downloads = @{
-    "pfsense.iso"             = @{ url = "https://atx.mirrors.pfsense.org/mirror/downloads/pfSense-CE-2.7.2-RELEASE-amd64.iso"; type="application/octet-stream" }
-    "ubuntu-22.04.iso"        = @{ url = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"; type="application/octet-stream" }
-    "win11-eval.iso"          = @{ url = "https://software-download.microsoft.com/download/pr/Win11_23H2_English_x64v2.iso"; type="application/octet-stream" }
-    "nessus_latest_amd64.deb" = @{ url = "https://www.tenable.com/downloads/api/v1/public/pages/nessus/downloads/19268/download?i_agree_to_tenable_license_agreement=true"; type="application/vnd.debian.binary-package" }
+    "pfsense.iso" = @{
+        urls = @(
+            "https://nyifiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso",
+            "https://frafiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso",
+            "https://atxfiles.pfsense.org/mirror/downloads/pfSense-CE-2.7.3-RELEASE-amd64.iso"
+        );
+        type = "application/octet-stream"
+    }
+    "ubuntu-22.04.iso" = @{
+        urls = @("https://releases.ubuntu.com/22.04.5/ubuntu-22.04.5-live-server-amd64.iso");
+        type = "application/octet-stream"
+    }
+    "win11-eval.iso" = @{
+        urls = @("https://software-download.microsoft.com/download/pr/Win11_23H2_English_x64v2.iso");
+        type = "application/octet-stream"
+    }
+    "nessus_latest_amd64.deb" = @{
+        urls = @("https://www.tenable.com/downloads/api/v1/public/pages/nessus/downloads/26139/download?i_agree_to_tenable_license_agreement=true");
+        type = "application/x-debian-package"
+    }
 }
 
 foreach ($item in $downloads.GetEnumerator()) {
     $dest = Join-Path $IsoDir $item.Key
-    Download-File -Url $item.Value.url -OutFile $dest -ExpectedContentType $item.Value.type
+    foreach ($url in $item.Value.urls) {
+        if (Test-Path $dest) { break }
+        Download-File -Url $url -OutFile $dest -ExpectedContentType $item.Value.type
+    }
+    if (!(Test-Path $dest)) {
+        Write-Warning "$($item.Key) could not be downloaded from any mirror. Please download it manually."
+    }
 }
 
 Write-Host "All downloads complete."

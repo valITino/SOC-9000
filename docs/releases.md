@@ -7,7 +7,7 @@ While cloning the repository works fine for contributors, many users simply want
 Releases allow you to:
 
 - Download a single `.zip` file containing the repository (excluding large ISOs)
-- Include pre‑built artifacts such as `SOC-9000-installer.exe`
+- Include pre‑built artifacts such as `SOC-9000-installer.ps1`
 - Provide checksums to verify integrity
 - Tag specific versions (e.g. `v0.1.0`) with changelogs
 
@@ -20,7 +20,7 @@ GitHub Packages (GHCR) are useful for hosting container images and Helm charts. 
 ## Suggested release contents
 
 - Source zip: the repository (minus large assets) for those who wish to browse or contribute
-- `SOC-9000-installer.exe`: the compiled standalone installer for easy one‑click installation (built via `make build-exe`)
+- `SOC-9000-installer.ps1`: the self-contained installer script for easy one‑click installation (built via `scripts/build-installer.ps1`)
 - `SHA256SUMS.txt`: checksums for the release assets
 - A brief `BEGINNER-README.txt` pointing to the beginner guide in `docs/`
 
@@ -28,18 +28,19 @@ Contributors should still fork and clone the repository directly; releases are a
 
 ## Building release assets
 
-To prepare a new release, you can use the Makefile targets provided in the repository:
+To prepare a new release, you can use the helper scripts provided in the repository:
 
-- Install prerequisites and build the standalone installer EXE:
+- Install prerequisites and build the standalone installer script:
 
   ```powershell
-  make install-all
+  pwsh -File .\scripts\install-prereqs.ps1
+  pwsh -File .\scripts\build-installer.ps1
   ```
 
 - Package the repository and compute checksums:
 
   ```powershell
-  make package
+  pwsh -File .\scripts\package-release.ps1
   ```
 
-The first command (`install-all`) installs GNU Make and PowerShell 7 (if missing) and then builds `SOC-9000-installer.exe`.  The second command (`package`) creates `SOC-9000-starter.zip` excluding large or transient directories and writes a `SHA256SUMS.txt` file with checksums for both the EXE and the ZIP.  These are the files you should attach to your GitHub release.
+These scripts install Git and PowerShell 7 if needed, produce `SOC-9000-installer.ps1`, and create `SOC-9000-starter.zip` along with `SHA256SUMS.txt`. Attach these files to your GitHub release.

@@ -16,7 +16,7 @@ The ZIP contains:
 - `secrets-list.json` (only names and types)
 - `cluster-storage.tgz` (PV data from local‑path and NFS, if present)
 
-To restore a lab from a backup, bring the cluster back up with `make up-all`, review `resources.yaml` to re‑apply any deltas, and extract `cluster-storage.tgz` to repopulate data on the ContainerHost if needed.
+To restore a lab from a backup, bring the cluster back up with `pwsh -File .\scripts\lab-up.ps1`, review `resources.yaml` to re‑apply any deltas, and extract `cluster-storage.tgz` to repopulate data on the ContainerHost if needed.
 
 ## Reset
 
