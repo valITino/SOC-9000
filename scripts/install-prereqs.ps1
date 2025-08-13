@@ -33,6 +33,18 @@ if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
     Write-Host "PowerShell 7 already installed." -ForegroundColor Green
 }
 
+# Packer
+if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
+    Write-Host "Packer not found. Installing via winget..." -ForegroundColor Cyan
+    try {
+        winget install --id HashiCorp.Packer --accept-package-agreements --accept-source-agreements
+    } catch {
+        Write-Warning "Failed to install Packer via winget. You may need to install it manually."
+    }
+} else {
+    Write-Host "Packer already installed." -ForegroundColor Green
+}
+
 # Git
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Write-Host "Git not found. Installing via winget..." -ForegroundColor Cyan
