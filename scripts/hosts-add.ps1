@@ -1,6 +1,10 @@
 # Adds lab hostnames to Windows hosts file.
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 
+if (-not $IsWindows) {
+  throw 'hosts-add.ps1 can only run on Windows.'
+}
+
 function Get-DotEnv {
   param([string]$Path = '.env')
   $map=@{}
@@ -12,14 +16,14 @@ function Get-DotEnv {
   return $map
 }
 
-function K { param([Parameter(ValueFromRemainingArguments)]$args) kubectl @args }
+function K { param([Parameter(ValueFromRemainingArguments)]$KArgs) kubectl @KArgs }
 
 $envMap = Get-DotEnv (Join-Path $PSScriptRoot '..\.env')
 
 function Get-LBIP {
   param($Svc,$Ns,$EnvVar,$Default)
   $ip=""
-  try { $ip = K -n $Ns get svc $Svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' } catch {}
+    try { $ip = K -n $Ns get svc $Svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' } catch { Write-Verbose $_ }
   if(-not $ip -and $envMap[$EnvVar]){ $ip = $envMap[$EnvVar] }
   if(-not $ip){ $ip = $Default }
   return $ip
@@ -38,10 +42,10 @@ $entries = @(
   "$nessusIP nessus.lab.local"
 )
 
-$hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
-$orig = Get-Content $hosts -ErrorAction Stop
-$filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }
-$block = @("# SOC-9000 BEGIN") + $entries + @("# SOC-9000 END")
-Set-Content -Path $hosts -Value ($filtered + $block) -Force
-Write-Host "Hosts file updated:"
-$block | ForEach-Object { "  $_" | Write-Host }
+  $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
+  $orig = Get-Content $hosts -ErrorAction Stop
+  $filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }
+  $block = @("# SOC-9000 BEGIN") + $entries + @("# SOC-9000 END")
+  Set-Content -Path $hosts -Value ($filtered + $block) -Force
+  Write-Output "Hosts file updated:"
+  $block | ForEach-Object { "  $_" | Write-Output }
