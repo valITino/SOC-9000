@@ -1,11 +1,24 @@
 # Deploy Nessus Essentials on k3s and add a hosts entry.
 param(
   [string]$Ns      = "soc",
-  [string]$LbIp    = "172.22.10.61",
+  [string]$LbIp,
   [string]$HostName = "nessus.lab.local"
 )
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 function K { kubectl $args }
+
+function Get-DotEnv {
+  param([string]$Path = '.env')
+  $map=@{}
+  if(Test-Path $Path){
+    Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
+      if($_ -match '^([^=]+)=(.*)$'){ $map[$matches[1].Trim()]=$matches[2].Trim() }
+    }
+  }
+  return $map
+}
+$envMap = Get-DotEnv '.env'
+if(-not $LbIp){ $LbIp = $envMap.NESSUS_LB_IP; if(-not $LbIp){ $LbIp = '172.22.10.61' } }
 
 # Ensure namespace exists
 K get ns $Ns 2>$null | Out-Null; if ($LASTEXITCODE -ne 0) { K create ns $Ns | Out-Null }
