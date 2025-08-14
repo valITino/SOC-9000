@@ -2,37 +2,40 @@
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
 function K { kubectl $args }
 
-$entries = @()
-# Traefik (k3s default namespace)
-$ns = "kube-system"
-try { K -n $ns get svc traefik | Out-Null } catch { $ns = "traefik" }
-$traefikIP = K -n $ns get svc traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
-if (!$traefikIP) { $traefikIP = "172.22.10.60" }
-$entries += @(
+function Get-DotEnv {
+  param([string]$Path = '.env')
+  $map=@{}
+  if(Test-Path $Path){
+    Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
+      if($_ -match '^([^=]+)=(.*)$'){ $map[$matches[1].Trim()]=$matches[2].Trim() }
+    }
+  }
+  return $map
+}
+$envMap = Get-DotEnv '.env'
+
+function Get-LBIP {
+  param($Svc,$Ns,$EnvVar,$Default)
+  $ip=""
+  try { $ip = K -n $Ns get svc $Svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null } catch {}
+  if(-not $ip -and $envMap[$EnvVar]){ $ip = $envMap[$EnvVar] }
+  if(-not $ip){ $ip = $Default }
+  return $ip
+}
+
+$traefikIP = Get-LBIP 'traefik' 'kube-system' 'TRAEFIK_LB_IP' '172.22.10.60'
+$nessusIP  = Get-LBIP 'nessus'  'soc'         'NESSUS_LB_IP'  '172.22.10.61'
+
+$entries = @(
   "$traefikIP wazuh.lab.local",
   "$traefikIP thehive.lab.local",
   "$traefikIP cortex.lab.local",
   "$traefikIP caldera.lab.local",
-  "$traefikIP dvwa.lab.local"
+  "$traefikIP dvwa.lab.local",
+  "$traefikIP portainer.lab.local",
+  "$nessusIP nessus.lab.local"
 )
 
-# Portainer
-$portIP = K -n portainer get svc portainer -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
-if ($portIP) { $entries += "$portIP portainer.lab.local" }
-
-# Nessus container
-$nessusSVCIP = K -n soc get svc nessus -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
-if ($nessusSVCIP) { $entries += "$nessusSVCIP nessus.lab.local" }
-
-# Nessus VM (fallback)
-$envPath = ".env"
-if (Test-Path $envPath) {
-  (Get-Content $envPath | ? {$_ -and $_ -notmatch '^\s*#'}) | % {
-    if ($_ -match '^NESSUS_VM_IP=(.*)$'){ $entries += "$( $matches[1] ) nessus.lab.local" }
-  }
-}
-
-# Write hosts block
 $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
 $orig = Get-Content $hosts
 $filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }

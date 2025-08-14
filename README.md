@@ -80,6 +80,17 @@ Validate that script paths resolve correctly without any network activity:
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 ```
 
+### Networking
+
+Set up and validate VMware virtual networks:
+
+```powershell
+pwsh -File .\scripts\configure-vmnet.ps1
+pwsh -File .\scripts\verify-networking.ps1
+```
+
+`configure-vmnet.ps1` creates or updates VMnet8 and VMnet20–23 with the correct subnets. `verify-networking.ps1` performs quick assertions and reports success when adapters, services, and hosts entries look good.
+
 During the bring-up process you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
 
 ### One‑click installation (end‑user path)
