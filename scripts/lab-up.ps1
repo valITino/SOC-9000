@@ -27,8 +27,16 @@ $isoDir = $envMap.ISO_DIR
 foreach($f in @($envMap.ISO_UBUNTU,$envMap.ISO_WINDOWS)){
   if(!(Test-Path (Join-Path $isoDir $f))){ Write-Warning "Missing ISO: $f in $isoDir" }
 }
-$null = Get-Command packer -ErrorAction Stop
-$null = Get-Command kubectl -ErrorAction Stop
+function Assert-Tool {
+  param([string]$Exe,[string]$Hint)
+  try {
+    Get-Command $Exe -ErrorAction Stop | Out-Null
+  } catch {
+    throw "$Exe not found. $Hint"
+  }
+}
+Assert-Tool 'packer' 'Install from https://developer.hashicorp.com/packer/downloads or winget install HashiCorp.Packer'
+Assert-Tool 'kubectl' 'Install with: winget install --id Kubernetes.kubectl'
 try { wsl -l -v 2>$null | Out-Null } catch { throw 'WSL not available. Install with: wsl --install -d Ubuntu-22.04' }
 
 Write-Host "Preflight checks passed." -ForegroundColor Green

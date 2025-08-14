@@ -1,5 +1,10 @@
 # Rebuild a single SOC-9000 hosts block based on current cluster state
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
+
+if (-not $IsWindows) {
+  throw 'hosts-refresh.ps1 can only run on Windows.'
+}
+
 function K { kubectl $args }
 
 function Get-DotEnv {
@@ -17,7 +22,7 @@ $envMap = Get-DotEnv '.env'
 function Get-LBIP {
   param($Svc,$Ns,$EnvVar,$Default)
   $ip=""
-  try { $ip = K -n $Ns get svc $Svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null } catch {}
+  try { $ip = K -n $Ns get svc $Svc -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null } catch { Write-Verbose $_ }
   if(-not $ip -and $envMap[$EnvVar]){ $ip = $envMap[$EnvVar] }
   if(-not $ip){ $ip = $Default }
   return $ip
@@ -37,9 +42,9 @@ $entries = @(
 )
 
 $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
-$orig = Get-Content $hosts
-$filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }
-$block = @("# SOC-9000 BEGIN") + ($entries | Sort-Object -Unique) + @("# SOC-9000 END")
-Set-Content -Path $hosts -Value ($filtered + $block) -Force
-Write-Host "Hosts updated:"
-$block | % { "  $_" | Write-Host }
+  $orig = Get-Content $hosts
+  $filtered = $orig | Where-Object { $_ -notmatch '^# SOC-9000 BEGIN' -and $_ -notmatch '^# SOC-9000 END' }
+  $block = @("# SOC-9000 BEGIN") + ($entries | Sort-Object -Unique) + @("# SOC-9000 END")
+  Set-Content -Path $hosts -Value ($filtered + $block) -Force
+  Write-Output "Hosts updated:"
+  $block | ForEach-Object { "  $_" | Write-Output }

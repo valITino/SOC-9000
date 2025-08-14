@@ -4,11 +4,16 @@ param()
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
+if (-not $IsWindows) {
+    throw 'verify-networking.ps1 can only run on Windows.'
+}
+
 function Find-Exe {
     param([string]$Name,[string[]]$Candidates)
-    foreach($c in $candidates){ if(Test-Path $c){return $c} }
+    foreach($c in $Candidates){ if(Test-Path $c){return $c} }
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-    return $cmd?.Source
+    if ($cmd) { return $cmd.Source }
+    return $null
 }
 
 $cli = Find-Exe 'vnetlib64.exe' @(
@@ -48,4 +53,4 @@ $names = 'wazuh.lab.local','thehive.lab.local','cortex.lab.local','caldera.lab.l
 foreach($n in $names){ if($block -notmatch $n){ throw "Hosts missing $n" } }
 $names | ForEach-Object { Resolve-DnsName -Name $_ -ErrorAction Stop | Out-Null }
 
-Write-Host 'Networking verification passed' -ForegroundColor Green
+Write-Output 'Networking verification passed'

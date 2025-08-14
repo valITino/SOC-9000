@@ -4,6 +4,10 @@ param()
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+if (-not $IsWindows) {
+    throw 'configure-vmnet.ps1 can only run on Windows.'
+}
+
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p = New-Object Security.Principal.WindowsPrincipal $id
@@ -19,7 +23,8 @@ function Find-Exe {
         if (Test-Path $c) { return $c }
     }
     $cmd = Get-Command $Name -ErrorAction SilentlyContinue
-    return $cmd?.Source
+    if ($cmd) { return $cmd.Source }
+    return $null
 }
 
 function Invoke-External {
@@ -72,8 +77,7 @@ function Get-NetworkInfo {
 
 foreach ($n in $nets) {
     if ($PSCmdlet.ShouldProcess($n.Name, 'configure')) {
-        $info = Get-NetworkInfo $n.Name
-        if (-not $info) {
+        if (-not (Get-NetworkInfo $n.Name)) {
             # create network
             if ($useVmnetcfg) {
                 Invoke-External $cli @('--add',$n.Name,'--type',$n.Type,'--subnet',$n.Subnet,'--netmask','255.255.255.0','--dhcp',($n.Dhcp?'yes':'no'))
