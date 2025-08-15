@@ -46,7 +46,7 @@ function Get-RequiredIsos {
   param([hashtable]$EnvMap,[string]$IsoDir)
   $pairs = @()
   foreach ($key in $EnvMap.Keys) {
-    if ($key -like 'ISO_*' -or $key -eq 'NESSUS_DEB') {
+    if (($key -like 'ISO_*' -and $key -ne 'ISO_DIR') -or $key -eq 'NESSUS_DEB') {
       $name = $EnvMap[$key]
       if ([string]::IsNullOrWhiteSpace($name)) { continue }
       $pairs += [pscustomobject]@{
@@ -139,6 +139,23 @@ if (-not (Test-Path $envPath)) {
 
 $envMap = Read-DotEnv $envPath
 if (-not $envMap.ContainsKey('ISO_DIR')) { $envMap['ISO_DIR'] = $IsoDir }
+
+# Ensure base images are present and validated
+$dlScript = Join-Path $RepoRoot 'scripts\download-isos.ps1'
+if (Test-Path $dlScript) {
+  Write-Host 'Ensuring ISO downloads...'
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $dlScript -IsoDir $envMap['ISO_DIR']
+  if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
+  Write-Host 'ISO download step: OK'
+}
+
+$vhScript = Join-Path $RepoRoot 'scripts\verify-hashes.ps1'
+if (Test-Path $vhScript) {
+  Write-Host 'Verifying ISO checksums...'
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $vhScript -IsoDir $envMap['ISO_DIR'] -Strict
+  if ($LASTEXITCODE -ne 0) { throw "verify-hashes.ps1 failed with exit code $LASTEXITCODE" }
+  Write-Host 'ISO checksum verification: OK'
+}
 
 $isoList = Get-RequiredIsos -EnvMap $envMap -IsoDir $envMap['ISO_DIR']
 if ($isoList.Count -gt 0) {

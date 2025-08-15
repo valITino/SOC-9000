@@ -4,9 +4,8 @@
 # or:
 #   <filename>  <SHA256>
 
-# Examples (replace with vendor values)
-# jammy 22.04.5:
-# 9f4f08a5f8c2a34e3e9c9d7fd7b...<truncated>...  ubuntu-22.04.iso
+# Official SHA256 checksums
+9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0  ubuntu-22.04.iso
 # pfSense CE 2.7.3:
 # <official sha256>  pfsense.iso
 # Windows 11 Eval:
