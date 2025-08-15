@@ -8,11 +8,11 @@
 
 - name: Register Nessus with activation code (if provided)
   ansible.builtin.command:
-    cmd: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env','NESSUS_ACTIVATION_CODE') }}
+    cmd: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env', 'NESSUS_ACTIVATION_CODE') }}
   when: lookup('env','NESSUS_ACTIVATION_CODE') | length > 0
   become: yes
-  register: reg_cmd
-  changed_when: "'Registration successful' in reg_cmd.stdout or reg_cmd.rc == 0"
+  register: nessus_vm_reg_cmd
+  changed_when: "'Registration successful' in nessus_vm_reg_cmd.stdout or nessus_vm_reg_cmd.rc == 0"
 
 - name: Wait for Nessus web UI to become ready
   ansible.builtin.uri:
@@ -20,21 +20,24 @@
     method: GET
     validate_certs: no
     status_code: 200,302,401
-  register: ui_check
-  until: ui_check is succeeded
+  register: nessus_vm_ui_check
+  until: nessus_vm_ui_check is succeeded
   retries: 30
   delay: 5
 
 - name: Optionally create admin user
   ansible.builtin.shell: |
     set -o pipefail
-    /opt/nessus/sbin/nessuscli adduser --login {{ lookup('env','NESSUS_ADMIN_USER') }} --password {{ lookup('env','NESSUS_ADMIN_PASS') }} --admin yes <<EOF
+    /opt/nessus/sbin/nessuscli adduser \
+      --login {{ lookup('env', 'NESSUS_ADMIN_USER') }} \
+      --password {{ lookup('env', 'NESSUS_ADMIN_PASS') }} \
+      --admin yes <<EOF
     y
     EOF
   args:
     executable: /bin/bash
-  when: 
-    - lookup('env','NESSUS_ADMIN_USER') | length > 0
-    - lookup('env','NESSUS_ADMIN_PASS') | length > 0
+  when:
+    - lookup('env', 'NESSUS_ADMIN_USER') | length > 0
+    - lookup('env', 'NESSUS_ADMIN_PASS') | length > 0
   become: yes
   changed_when: false
