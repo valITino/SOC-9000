@@ -41,7 +41,10 @@ function Read-DotEnv([string]$Path) {
   $m=@{}; Get-Content $Path | ForEach-Object {
     if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
     $k,$v = $_ -split '=',2
-    if ($v -ne $null){ $m[$k.Trim()]=$v.Trim() }
+    if ($v -ne $null) {
+      $val = $v.Trim()
+      if ($val) { $m[$k.Trim()] = $val }
+    }
   }; $m
 }
 
