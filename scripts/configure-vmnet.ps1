@@ -7,7 +7,8 @@
   atomically via vnetlib64.exe, restarts NAT/DHCP, disables DHCP on host-only
   VMnets (20–23), and verifies adapters/services.
 #>
-[CmdletBinding(SupportsShouldProcess)]
+# CmdletBinding without SupportsShouldProcess to avoid duplicate WhatIf
+[CmdletBinding()]
 param(
   [string]$Vmnet8Subnet   = "192.168.37.0",
   [string]$Vmnet8Mask     = "255.255.255.0",
