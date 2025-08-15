@@ -163,7 +163,7 @@ if (Test-Path $vhScript) {
   Write-Host 'ISO checksum verification: OK'
 }
 
-$isoList = Get-RequiredIsos -EnvMap $envMap -IsoDir $envMap['ISO_DIR']
+$isoList = @(Get-RequiredIsos -EnvMap $envMap -IsoDir $envMap['ISO_DIR'])
 if ($isoList.Count -gt 0) {
   Prompt-MissingIsosLoop -IsoList $isoList -IsoDir $envMap['ISO_DIR']
 } else {
