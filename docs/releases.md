@@ -27,11 +27,7 @@ Contributors should still fork and clone the repository directly; releases are a
 
 ## Building release assets
 
-To prepare a new release, you can use the helper scripts provided in the repository:
-
-- Install prerequisites and build the standalone setup script:
-
-  
+To prepare a new release, use the helper script provided in the repository:
 
 - Package the repository and compute checksums:
 

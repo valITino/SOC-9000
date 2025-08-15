@@ -31,31 +31,17 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 ## Quick Start
 
-Run the one-shot installer to configure and verify VMware networking:
+Run the setup script from a fresh clone to configure and verify VMware networking:
 
 ```powershell
-pwsh -File .\scripts/setup-soc9000.ps1 -Verbose
+git clone <repo-url> E:\SOC-9000\SOC-9000
+cd E:\SOC-9000\SOC-9000
+pwsh -File .\scripts\setup-soc9000.ps1 -Verbose
 ```
 
 Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
 
-### Choose your installation path
-
-SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.
-
-1. **One‑click installer (end‑user)** — Download a prebuilt `scripts/setup-soc9000.ps1` from a GitHub release, right‑click and choose **Run with PowerShell** as Administrator.  The script clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git yourself.
-2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
-
-   ```powershell
-   pwsh -File .\scripts\install-prereqs.ps1
-   pwsh -File .\scripts\download-isos.ps1
-   pwsh -File .\scripts\lab-up.ps1
-   ```
-
-   The download script fetches Ubuntu automatically and opens vendor pages for pfSense, Windows 11, and Nessus so you can download them manually. pfSense and Nessus require free accounts; a burner email works fine. Files can keep their vendor‑supplied names—the installer detects them automatically. This method is ideal if you don’t want to use Git but are comfortable running a few commands.
-3. **Git clone (contributor/developer)** — If you plan to contribute or prefer to work directly with the source repository, clone it and run the scripts yourself.  See below.
-
-### Clone and initialize (contributor/developer path)
+### Clone and initialize
 
 If you are contributing to SOC‑9000 and wish to clone the repository directly, run:
 
@@ -87,14 +73,6 @@ pwsh -File .\scripts\verify-networking.ps1
 `configure-vmnet.ps1` creates or updates VMnet8 and VMnet20–23 with the correct subnets. `verify-networking.ps1` performs quick assertions and reports success when adapters, services, and hosts entries look good.
 
 During the bring-up process you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
-
-### One‑click installation (end‑user path)
-
-For a frictionless setup, download a release from GitHub (look for `scripts/setup-soc9000.ps1`) or run the standalone setup script provided in this repo.  By default, the installer clones the repo into `E:\SOC-9000` and stores ISO downloads and build files in `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and launches the entire bring‑up:
-
-
-
-The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion by keeping the repository itself in `E:\SOC-9000` while placing ISO downloads and build artifacts under `E:\SOC-9000-Pre-Install` (or paths of your choice).  This separation means that you never mix the Git clone with downloaded assets.
 
 ### URLs (after bring-up)
 
