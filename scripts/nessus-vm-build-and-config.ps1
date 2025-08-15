@@ -1,27 +1,34 @@
 # Builds the Nessus VM with Packer, runs the Ansible role, and adds a hosts entry.
 $ErrorActionPreference = "Stop"; Set-StrictMode -Version Latest
 
-function Get-DotEnv {
-  param([string]$Path = '.env')
-  if(!(Test-Path $Path)){ throw ".env not found. Copy .env.example to .env first." }
-  $map=@{}
-  Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
-    if($_ -match '^([^=]+)=(.*)$'){ $map[$matches[1].Trim()] = $matches[2].Trim() }
+function Read-DotEnv {
+  param([string]$Path)
+  if (-not (Test-Path $Path)) { return @{} }
+  $map = @{}
+  Get-Content $Path | ForEach-Object {
+    if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
+    $k,$v = $_ -split '=',2
+    if ($v -ne $null) { $map[$k.Trim()] = $v.Trim() }
   }
-  return $map
+  $map
 }
 
-function Convert-ToWSLPath {
-  param([string]$WinPath)
-  if($WinPath -match '^([A-Za-z]):\\(.*)'){
-    $drive = $matches[1].ToLower()
-    $rest = $matches[2].Replace('\\','/')
-    return "/mnt/$drive/$rest"
-  }
-  return $WinPath.Replace('\\','/')
+function To-WSLPath([string]$win){ $win -replace '^([A-Za-z]):','/mnt/$1' -replace '\\','/' }
+
+$repoRoot = Split-Path -Parent $PSCommandPath
+$envMap = Read-DotEnv -Path (Join-Path $repoRoot "..\.env")
+
+# Get activation code from .env or secure prompt
+$act = $envMap.NESSUS_ACTIVATION_CODE
+if (-not $act -or $act -eq "") {
+  Write-Host "Enter your Nessus activation code (input hidden):"
+  $act = Read-Host -AsSecureString | ForEach-Object { (New-Object System.Net.NetworkCredential("u",$_)).Password }
 }
 
-$envMap = Get-DotEnv '.env'
+# Optional admin user/pass for nessuscli adduser
+$adminUser = $envMap.NESSUS_ADMIN_USER
+$adminPass = $envMap.NESSUS_ADMIN_PASS
+
 $required = 'ARTIFACTS_DIR','VMNET_SOC','PFSENSE_SOC_IP','NESSUS_VM_IP','NESSUS_VM_CPUS','NESSUS_VM_RAM_MB'
 foreach($r in $required){ if(-not $envMap[$r]){ throw ".env missing $r" } }
 
@@ -40,12 +47,19 @@ $vmrun = @("C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe","C:\Prog
 if (-not $vmrun) { throw "vmrun not found" }
 & $vmrun -T ws start $vmx nogui | Out-Null
 
-# Run Ansible role from WSL
+# Run Ansible role from WSL with activation vars
 $repo = Resolve-Path "$PSScriptRoot/.."
-$wslRepo = Convert-ToWSLPath $repo
+$wslRepo = To-WSLPath $repo
 $inv = "$wslRepo/ansible/inventory.ini"
 $play= "$wslRepo/ansible/site-nessus.yml"
-wsl bash -lc "ansible-playbook -i '$inv' '$play'"
+$cmd = "NESSUS_ACTIVATION_CODE='$act' NESSUS_ADMIN_USER='$adminUser' NESSUS_ADMIN_PASS='$adminPass' ansible-playbook -i '$inv' '$play'"
+Write-Host "Running Nessus VM Ansible playbook..." -ForegroundColor Cyan
+wsl bash -lc "$cmd"
+if ($LASTEXITCODE -ne 0) { throw "Nessus VM configuration failed." }
+
+# Clear sensitive env
+$env:NESSUS_ACTIVATION_CODE = $null
+$env:NESSUS_ADMIN_PASS = $null
 
 # Add hosts mapping for convenience
 $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
@@ -55,4 +69,3 @@ $block = @("# SOC-9000 BEGIN", "$($envMap.NESSUS_VM_IP) nessus.lab.local", "# SO
 Set-Content -Path $hosts -Value ($filtered + $block) -Force
 
 Write-Host "`nDone. Open: https://nessus.lab.local:8834"
-Write-Host "If you didn't pre-set NESSUS_ACTIVATION_CODE, complete activation in the UI."

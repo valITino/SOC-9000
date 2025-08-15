@@ -1,0 +1,40 @@
+---
+- name: Ensure Nessus service enabled and started
+  ansible.builtin.service:
+    name: nessusd
+    state: started
+    enabled: yes
+  become: yes
+
+- name: Register Nessus with activation code (if provided)
+  ansible.builtin.command:
+    cmd: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env','NESSUS_ACTIVATION_CODE') }}
+  when: lookup('env','NESSUS_ACTIVATION_CODE') | length > 0
+  become: yes
+  register: reg_cmd
+  changed_when: "'Registration successful' in reg_cmd.stdout or reg_cmd.rc == 0"
+
+- name: Wait for Nessus web UI to become ready
+  ansible.builtin.uri:
+    url: https://127.0.0.1:8834
+    method: GET
+    validate_certs: no
+    status_code: 200,302,401
+  register: ui_check
+  until: ui_check is succeeded
+  retries: 30
+  delay: 5
+
+- name: Optionally create admin user
+  ansible.builtin.shell: |
+    set -o pipefail
+    /opt/nessus/sbin/nessuscli adduser --login {{ lookup('env','NESSUS_ADMIN_USER') }} --password {{ lookup('env','NESSUS_ADMIN_PASS') }} --admin yes <<EOF
+    y
+    EOF
+  args:
+    executable: /bin/bash
+  when: 
+    - lookup('env','NESSUS_ADMIN_USER') | length > 0
+    - lookup('env','NESSUS_ADMIN_PASS') | length > 0
+  become: yes
+  changed_when: false
