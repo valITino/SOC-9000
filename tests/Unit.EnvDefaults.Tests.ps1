@@ -15,6 +15,6 @@ BeforeAll {
 }
 Describe ".env.example baseline" -Tag 'unit' {
   It "contains the required keys" {
-    foreach($k in $script:globals){ $script:content | Should -Match ("^$k=") }
+    foreach($k in $script:globals){ $script:content | Should -Match ("(?m)^$k=") }
   }
 }

@@ -1,11 +1,11 @@
 # Tags: unit
 [CmdletBinding()] param()
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repo = Split-Path $here -Parent
-$gen  = Join-Path $repo 'scripts\generate-vmnet-profile.ps1'
 Describe "VMnet profile generator" -Tag 'unit' {
   It "generates expected content from a sample env" {
-    $tmpEnv = Join-Path $env:TEMP 'soc9000-test.env'
+    $here = $PSScriptRoot
+    $repo = Split-Path $here -Parent
+    $gen  = Join-Path $repo 'scripts/generate-vmnet-profile.ps1'
+    $tmpEnv = Join-Path ([IO.Path]::GetTempPath()) 'soc9000-test.env'
     @"
 VMNET8_SUBNET=192.168.37.0
 VMNET8_MASK=255.255.255.0
@@ -17,8 +17,8 @@ VMNET22_SUBNET=172.22.30.0
 VMNET23_SUBNET=172.22.40.0
 HOSTONLY_MASK=255.255.255.0
 "@ | Set-Content -Path $tmpEnv -Encoding ASCII
-    $out = Join-Path $env:TEMP 'soc9000-vmnet-import.txt'
-    $text = & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -EnvPath $tmpEnv -OutFile $out -PassThru
+    $out = Join-Path ([IO.Path]::GetTempPath()) 'soc9000-vmnet-import.txt'
+    $text = . $gen -EnvPath $tmpEnv -OutFile $out -PassThru
     $expected = @"
 add vnet vmnet8
 set vnet vmnet8 addr 192.168.37.0
@@ -53,7 +53,7 @@ set vnet vmnet23 mask 255.255.255.0
 set adapter vmnet23 addr 172.22.40.1
 update adapter vmnet23
 "@ -replace "`r`n","`n"
-    ($text -replace "`r`n","`n") | Should -BeExactly $expected
+    ($text -replace "`r`n","`n").TrimEnd() | Should -BeExactly $expected
     Test-Path $out | Should -BeTrue
   }
 }
