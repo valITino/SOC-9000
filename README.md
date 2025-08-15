@@ -43,7 +43,7 @@ Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
 
 SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.
 
-1. **One‑click installer (end‑user)** — Download a prebuilt `scripts/setup-soc9000.ps1` from a GitHub release, right‑click and choose **Run with PowerShell** as Administrator.  The script clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
+1. **One‑click installer (end‑user)** — Download a prebuilt `scripts/setup-soc9000.ps1` from a GitHub release, right‑click and choose **Run with PowerShell** as Administrator.  The script clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git yourself.
 2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
 
    ```powershell
@@ -66,16 +66,6 @@ Copy-Item .env.example .env
 pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, telemetry)
 pwsh -File .\scripts\lab-status.ps1
 ```
-
-Before building the setup script, ensure Git, PowerShell 7, Packer, and kubectl are installed:
-
-```powershell
-pwsh -File .\scripts\install-prereqs.ps1
-```
-
-You can then build the self‑contained setup script via:
-
-
 
 ### Smoke test
 
