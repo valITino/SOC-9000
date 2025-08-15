@@ -31,3 +31,18 @@ Describe "ISO key detection" -Tag 'unit' {
   }
 }
 
+Describe "Prompt-MissingIsosLoop" -Tag 'unit' {
+  It "returns immediately when all ISOs exist" {
+    function Prompt-MissingIsosLoopLocal {
+      param([pscustomobject[]]$IsoList,[string]$IsoDir)
+      $missing = $IsoList | Where-Object { -not $_.Exists }
+      if (($missing | Measure-Object).Count -eq 0) { return $true } else { return $false }
+    }
+    $list = @(
+      [pscustomobject]@{Key='ISO_1'; FileName='a.iso'; FullPath='/isos/a.iso'; Exists=$true},
+      [pscustomobject]@{Key='ISO_2'; FileName='b.iso'; FullPath='/isos/b.iso'; Exists=$true}
+    )
+    Prompt-MissingIsosLoopLocal -IsoList $list -IsoDir '/isos' | Should -BeTrue
+  }
+}
+
