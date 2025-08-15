@@ -21,28 +21,4 @@
     deb: "/tmp/{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
     state: present
 
-- name: Enable & start nessusd
-  ansible.builtin.systemd:
-    name: nessusd
-    enabled: true
-    state: started
-
-- name: Optional register with activation code (if provided)
-  when: lookup('env', 'NESSUS_ACTIVATION_CODE') | default('') | length > 0
-  ansible.builtin.command: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env', 'NESSUS_ACTIVATION_CODE') }}
-  register: nessus_vm_reg_out
-  changed_when: "'already registered' not in nessus_vm_reg_out.stdout|lower"
-
-- name: Optional create admin user (if both user & pass provided)
-  when: (lookup('env', 'NESSUS_ADMIN_USER') | default('')) | length > 0 and
-        (lookup('env', 'NESSUS_ADMIN_PASS') | default('')) | length > 0
-  ansible.builtin.command: /opt/nessus/sbin/nessuscli adduser "{{ lookup('env', 'NESSUS_ADMIN_USER') }}"
-  args:
-    stdin: |
-      {{ lookup('env', 'NESSUS_ADMIN_PASS') }}
-      {{ lookup('env', 'NESSUS_ADMIN_PASS') }}
-      y
-      y
-      # (accept defaults and grant admin)
-  register: nessus_vm_adduser_out
-  changed_when: "'already exists' not in nessus_vm_adduser_out.stdout|lower"
+- import_tasks: register.yml

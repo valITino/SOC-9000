@@ -31,6 +31,14 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 ## Quick Start
 
+Run the one-shot installer to configure and verify VMware networking:
+
+```powershell
+pwsh -File .\SOC-9000-installer.ps1 -Verbose
+```
+
+Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
+
 ### Choose your installation path
 
 SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.

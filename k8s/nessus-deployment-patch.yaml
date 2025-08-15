@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nessus
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: register-nessus
+          image: alpine:3.20
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              echo "Registering Nessus..."
+              /bin/sh -c "/opt/nessus/sbin/nessuscli fetch --register $(cat /run/secrets/nessus/activationCode)" || true
+          volumeMounts:
+            - name: nessus-activation
+              mountPath: /run/secrets/nessus
+              readOnly: true
+      volumes:
+        - name: nessus-activation
+          secret:
+            secretName: nessus-activation

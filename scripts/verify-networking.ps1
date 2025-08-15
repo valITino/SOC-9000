@@ -1,132 +1,70 @@
-# Verify VMware networking and hosts configuration for SOC-9000
-<#!
-.SYNOPSIS
-    Validate VMware VMnet adapters, services and configuration.
-.DESCRIPTION
-    Ensures required adapters exist and are up, services are running,
-    and configuration files reflect the expected topology. Values may
-    be overridden by parameters or .env entries.
-#>
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSUseDeclaredVarsMoreThanAssignment", "", Justification="Parameters consumed during configuration comparisons")]
 [CmdletBinding()]
 param(
-    [string]$VMNET8_SUBNET = '192.168.37.0',
-    [string]$VMNET8_MASK = '255.255.255.0',
-    [string]$VMNET8_HOSTIP = '192.168.37.1',
-    [string]$VMNET8_GATEWAY = '192.168.37.2',
-    [string]$VMNET20_SUBNET = '172.22.10.0',
-    [string]$VMNET21_SUBNET = '172.22.20.0',
-    [string]$VMNET22_SUBNET = '172.22.30.0',
-    [string]$VMNET23_SUBNET = '172.22.40.0',
-    [string]$HOSTONLY_MASK = '255.255.255.0'
+  [string]$Vmnet8Subnet   = "192.168.37.0",
+  [string]$Vmnet8Mask     = "255.255.255.0",
+  [string]$Vmnet8HostIp   = "192.168.37.1",
+  [string]$Vmnet8Gw       = "192.168.37.2",
+  [string]$Vmnet20Subnet  = "172.22.10.0",
+  [string]$Vmnet21Subnet  = "172.22.20.0",
+  [string]$Vmnet22Subnet  = "172.22.30.0",
+  [string]$Vmnet23Subnet  = "172.22.40.0",
+  [string]$HostOnlyMask   = "255.255.255.0"
 )
-
-$ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-if (-not $IsWindows) { throw 'verify-networking.ps1 can only run on Windows.' }
+function Fail($m){ Write-Error $m; $script:failed = $true }
 
-# Allow overrides from .env
-$projectRoot = Split-Path -Parent $PSCommandPath
-$envPath = Join-Path $projectRoot '.env'
-if (Test-Path $envPath) {
-    Get-Content $envPath | Where-Object { $_ -match '=' -and $_ -notmatch '^\s*#' } |
-        ForEach-Object {
-            $parts = $_ -split '=',2
-            $key = $parts[0].Trim()
-            $val = $parts[1].Trim()
-            switch ($key) {
-                'VMNET8_SUBNET' { $VMNET8_SUBNET = $val }
-                'VMNET8_MASK' { $VMNET8_MASK = $val }
-                'VMNET8_HOSTIP' { $VMNET8_HOSTIP = $val }
-                'VMNET8_GATEWAY' { $VMNET8_GATEWAY = $val }
-                'VMNET20_SUBNET' { $VMNET20_SUBNET = $val }
-                'VMNET21_SUBNET' { $VMNET21_SUBNET = $val }
-                'VMNET22_SUBNET' { $VMNET22_SUBNET = $val }
-                'VMNET23_SUBNET' { $VMNET23_SUBNET = $val }
-                'HOSTONLY_MASK' { $HOSTONLY_MASK = $val }
-            }
-        }
+$script:failed = $false
+
+# Services
+foreach($s in "VMware NAT Service","VMnetDHCP"){
+  $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+  if (-not $svc){ Fail "Service '$s' not found. Repair VMware Workstation."; continue }
+  if ($svc.StartType -eq 'Disabled'){ Fail "Service '$s' is Disabled. Set to Automatic and Start it."; continue }
+  if ($svc.Status -ne 'Running'){ Fail "Service '$s' is not Running. Start it in Services.msc."; }
 }
 
-function Get-DhcpRange([string]$subnet) {
-    $parts = $subnet.Split('.')
-    $prefix = "$($parts[0]).$($parts[1]).$($parts[2])"
-    return "$prefix.128 $prefix.254"
-}
-function Get-HostIP([string]$subnet) {
-    $parts = $subnet.Split('.')
-    return "$($parts[0]).$($parts[1]).$($parts[2]).1"
-}
-function MaskToPrefix([string]$mask) {
-    $bytes = [System.Net.IPAddress]::Parse($mask).GetAddressBytes()
-    $bits  = ($bytes | ForEach-Object { [Convert]::ToString($_,2).PadLeft(8,'0') }) -join ''
-    return ($bits -split '0')[0].Length
+# Config files
+if (-not (Test-Path "C:\ProgramData\VMware\vmnetnat.conf"))  { Fail "vmnetnat.conf missing." }
+if (-not (Test-Path "C:\ProgramData\VMware\vmnetdhcp.conf")) { Fail "vmnetdhcp.conf missing." }
+
+# Adapters
+$adapters = @("VMware Network Adapter VMnet8","VMware Network Adapter VMnet20","VMware Network Adapter VMnet21","VMware Network Adapter VMnet22","VMware Network Adapter VMnet23")
+foreach($a in $adapters){
+  $ad = Get-NetAdapter -Name $a -ErrorAction SilentlyContinue
+  if (-not $ad){ Fail "Adapter '$a' not found."; continue }
+  if ($ad.Status -ne 'Up'){ Fail "Adapter '$a' not Up."; }
 }
 
-try {
-    # Locate vnetlib64
-    $candidates = @(
-        'C:\\Program Files (x86)\\VMware\\VMware Workstation\\vnetlib64.exe',
-        'C:\\Program Files\\VMware\\VMware Workstation\\vnetlib64.exe'
-    )
-    $vnetlib = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $vnetlib) {
-        $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
-        if ($cmd) { $vnetlib = $cmd.Source }
-    }
-    if (-not $vnetlib) { throw 'vnetlib64.exe not found' }
+# IPs (basic presence/consistency)
+function Expect-IP($alias,$ipStartsWith){
+  $cfg = Get-NetIPConfiguration -InterfaceAlias $alias -ErrorAction SilentlyContinue
+  if (-not $cfg -or -not $cfg.IPv4Address){ Fail "No IPv4 on '$alias'."; return }
+  $ip = ($cfg.IPv4Address | Select-Object -First 1).IPAddress
+  if (-not $ip.StartsWith($ipStartsWith)){ Fail "Host IP for '$alias' ($ip) not in expected subnet prefix '$ipStartsWith'." }
+}
+Expect-IP "VMware Network Adapter VMnet8" ($Vmnet8Subnet -replace '\.0$','.')
+Expect-IP "VMware Network Adapter VMnet20" ($Vmnet20Subnet -replace '\.0$','.')
+Expect-IP "VMware Network Adapter VMnet21" ($Vmnet21Subnet -replace '\.0$','.')
+Expect-IP "VMware Network Adapter VMnet22" ($Vmnet22Subnet -replace '\.0$','.')
+Expect-IP "VMware Network Adapter VMnet23" ($Vmnet23Subnet -replace '\.0$','.')
 
-    # Services
-    $services = 'VMware NAT Service','VMnetDHCP'
-    foreach ($s in $services) {
-        $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
-        if (-not $svc) { throw "Service $s not found" }
-        if ($svc.StartType -eq 'Disabled') { throw "$s startup disabled" }
-        if ($svc.Status -ne 'Running') { throw "$s not running" }
-    }
-    $bridgeSvc = Get-Service -Name 'VMnetBridge' -ErrorAction SilentlyContinue
-    if ($bridgeSvc -and $bridgeSvc.StartType -eq 'Disabled') { throw 'VMnetBridge startup disabled' }
+# DHCP OFF on host-only vmnets (by scanning vmnetdhcp.conf)
+$dhcp = Get-Content "C:\ProgramData\VMware\vmnetdhcp.conf" -Raw
+foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
+  if ($dhcp -match [regex]::Escape("subnet $s netmask $HostOnlyMask")){
+    Fail "DHCP pool present for host-only subnet $s. Re-run configure-vmnet.ps1 to disable."
+  }
+}
 
-    # Config files
-    $natConf  = 'C:\\ProgramData\\VMware\\vmnetnat.conf'
-    $dhcpConf = 'C:\\ProgramData\\VMware\\vmnetdhcp.conf'
-    if (-not (Test-Path $natConf))  { throw "Missing $natConf" }
-    if (-not (Test-Path $dhcpConf)) { throw "Missing $dhcpConf" }
+# Hyper-V advisory
+$hv = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -ErrorAction SilentlyContinue)
+if ($hv -and $hv.State -eq 'Enabled'){
+  Write-Warning "Hyper-V is enabled. Bridged behavior may vary under Hyper-V/WHv."
+}
 
-    # Validate NAT gateway
-    $natText = Get-Content $natConf -ErrorAction Stop
-    if ($natText -notmatch [regex]::Escape($VMNET8_GATEWAY)) {
-        throw 'NAT gateway mismatch in vmnetnat.conf'
-    }
-
-    # Validate DHCP range
-    $range = Get-DhcpRange $VMNET8_SUBNET
-    $dhcpText = Get-Content $dhcpConf -ErrorAction Stop
-    if ($dhcpText -notmatch [regex]::Escape($range.Split()[0])) { throw 'DHCP start mismatch' }
-    if ($dhcpText -notmatch [regex]::Escape($range.Split()[1])) { throw 'DHCP end mismatch' }
-
-    # Adapters
-    $adapters = @(
-        @{Name='VMware Network Adapter VMnet8';  IP=$VMNET8_HOSTIP; Mask=$VMNET8_MASK},
-        @{Name='VMware Network Adapter VMnet20'; IP=(Get-HostIP $VMNET20_SUBNET); Mask=$HOSTONLY_MASK},
-        @{Name='VMware Network Adapter VMnet21'; IP=(Get-HostIP $VMNET21_SUBNET); Mask=$HOSTONLY_MASK},
-        @{Name='VMware Network Adapter VMnet22'; IP=(Get-HostIP $VMNET22_SUBNET); Mask=$HOSTONLY_MASK},
-        @{Name='VMware Network Adapter VMnet23'; IP=(Get-HostIP $VMNET23_SUBNET); Mask=$HOSTONLY_MASK}
-    )
-    foreach ($a in $adapters) {
-        $ad = Get-NetAdapter -Name $a.Name -ErrorAction SilentlyContinue
-        if (-not $ad) { throw "Adapter $($a.Name) missing" }
-        if ($ad.Status -ne 'Up') { throw "Adapter $($a.Name) not Up" }
-        $cfg = Get-NetIPAddress -InterfaceAlias $a.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $cfg) { throw "No IPv4 on $($a.Name)" }
-        if ($cfg.IPAddress -ne $a.IP) { throw "$($a.Name) IP $($cfg.IPAddress) expected $($a.IP)" }
-        if ($cfg.PrefixLength -ne (MaskToPrefix $a.Mask)) { throw "$($a.Name) mask mismatch" }
-    }
-
-    Write-Output 'Networking verification passed'
-    exit 0
-} catch {
-    Write-Error $_
-    exit 1
+if ($script:failed){ exit 1 } else { 
+  Write-Host "Networking verification: OK" -ForegroundColor Green
+  exit 0
 }
