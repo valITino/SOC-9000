@@ -59,26 +59,6 @@ To fetch the images:
 
 The script checks your `isos` folder (`E:\SOC-9000\isos` by default), downloads Ubuntu automatically if it is missing, and opens vendor pages for pfSense, Windows 11, and Nessus so you can download them manually. pfSense and Nessus require free accounts; a burner email works fine. You can keep the original file names—the installer detects them automatically. If you prefer to supply your own files, place them in the folder and the script will skip them.
 
-### One‑click installer
-
-If you’d rather avoid manual cloning and setup, you can use the standalone installer.  This PowerShell script separates **where the repo lives** from **where downloads and build artifacts live**.  By default it clones the repository into `E:\SOC-9000` and downloads the required images into `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and runs the full bring‑up.  You can override either location via parameters:
-
-```powershell
-# use defaults: repo in E:\SOC-9000 and ISOs/artifacts in E:\SOC-9000-Pre-Install
-pwsh -File .\scripts/setup-soc9000.ps1
-
-# customise the install directory (where ISOs, artifacts and temp files live)
-pwsh -File .\scripts/setup-soc9000.ps1 -InstallDir "D:\Labs\SOC-9000-Pre-Install"
-
-# customise both repo location and install location
-pwsh -File .\scripts/setup-soc9000.ps1 -RepoDir "D:\SOC-9000" -InstallDir "D:\Labs\SOC-9000-Pre-Install"
-```
-
-You can also build a self-contained setup script with embedded prerequisites using the build script:
-
-
-
----
 
 ## 4. Install required software
 
@@ -96,7 +76,7 @@ You can also build a self-contained setup script with embedded prerequisites usi
    pwsh -File .\scripts\install-prereqs.ps1
    ```
 
-   This step ensures that both Git and PowerShell 7 are available before you attempt to build the standalone installer or use other scripts.  If the tools are already installed, the script skips them.
+   This step ensures that both Git and PowerShell 7 are available before you run other scripts.  If the tools are already installed, the script skips them.
 
 3. After WSL installs, launch **Ubuntu 22.04** from the Start menu and run:
 

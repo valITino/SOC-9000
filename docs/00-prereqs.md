@@ -47,7 +47,7 @@ The script downloads Ubuntu automatically and opens vendor pages for pfSense, Wi
 
 ## Install prerequisites
 
-Before building the standalone installer, ensure PowerShell 7 and Git are installed.  The helper script `scripts/install-prereqs.ps1` installs both via winget.
+Ensure PowerShell 7 and Git are installed.  The helper script `scripts/install-prereqs.ps1` installs both via winget.
 
 From the repo root, run:
 
@@ -56,13 +56,8 @@ cd E:\SOC-9000\SOC-9000
 pwsh -File .\scripts\install-prereqs.ps1
 ```
 
-If winget is missing or a package fails to install, the script writes an error and exits.  The standalone installer bundles this script and aborts if prerequisites cannot be installed.
+If winget is missing or a package fails to install, the script writes an error and exits.
 
-To build the self‑contained setup script and package the repository:
-
-
-
-These scripts are especially useful when preparing a GitHub release.
 
 ## SSH key
 
@@ -85,7 +80,7 @@ ssh-keygen -t ed25519 -C "soc-9000" -f $env:USERPROFILE\.ssh\id_ed25519
 pwsh -ExecutionPolicy Bypass -File .\scripts\host-prepare.ps1
 ```
 
-Alternatively, use the standalone installer to perform the clone, ISO download, and bring‑up in one step:
+Run the setup script to perform the clone, ISO download, and bring‑up in one step:
 
 ```powershell
 pwsh -File .\scripts/setup-soc9000.ps1
