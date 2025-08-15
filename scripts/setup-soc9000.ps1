@@ -6,211 +6,147 @@ $ErrorActionPreference = 'Stop'
 
 trap {
   Write-Error $_
+  try { Stop-Transcript | Out-Null } catch {}
   Read-Host 'Press ENTER to exit'
   exit 1
 }
 
 function Ensure-Admin {
-  $id  = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $pri = New-Object Security.Principal.WindowsPrincipal($id)
-  if (-not $pri.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Elevation required. Relaunching as Administrator..."
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $p  = New-Object Security.Principal.WindowsPrincipal $id
+  if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Elevation required. Relaunching as Administrator..." -ForegroundColor Cyan
     $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
     Start-Process pwsh -Verb RunAs -ArgumentList $args | Out-Null
     exit 0
   }
 }
 
-function Read-DotEnv {
-  param([string]$Path)
+function Read-DotEnv([string]$Path) {
   if (-not (Test-Path $Path)) { return @{} }
   $m = @{}
   Get-Content $Path | ForEach-Object {
-    if ($_ -match '^\s*#' -or $_ -match '^\s*$') { continue }
+    if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
     $k,$v = $_ -split '=',2
     if ($null -ne $v) { $m[$k.Trim()] = $v.Trim() }
   }
   return $m
 }
 
-function Require-DriveE {
-  if (-not (Test-Path 'E:\')) {
-    throw "Drive E:\ was not found. Please attach/create an E: volume, then re-run."
-  }
+function Show-Step([string]$Msg) {
+  Write-Host ""
+  Write-Host "==== $Msg ====" -ForegroundColor Cyan
 }
 
-function Ensure-Dirs {
-  param([string]$InstallRoot,[string]$RepoRoot)
-  New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
-  New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot 'isos') | Out-Null
-  New-Item -ItemType Directory -Force -Path $RepoRoot | Out-Null
-  New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot 'artifacts\network') | Out-Null
-  New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot 'logs') | Out-Null
-}
-
-function Get-RequiredIsos {
-  param([hashtable]$EnvMap,[string]$IsoDir)
-  $pairs = @()
-  foreach ($key in $EnvMap.Keys) {
-    if (($key -like 'ISO_*' -and $key -ne 'ISO_DIR') -or $key -eq 'NESSUS_DEB') {
-      $name = $EnvMap[$key]
-      if ([string]::IsNullOrWhiteSpace($name)) { continue }
-      $pairs += [pscustomobject]@{
-        Key      = $key
-        FileName = $name
-        FullPath = (Join-Path $IsoDir $name)
-        Exists   = (Test-Path (Join-Path $IsoDir $name))
+function Wait-ForManualDownloads([string]$IsoDir) {
+  $patterns = @(
+    @{Name='Windows 11 ISO'; Pattern='(?i).*win(dows)?[^\w]*11.*\.iso$'},
+    @{Name='pfSense ISO';    Pattern='(?i)(pfsense|netgate).*\.iso(\.gz)?$'},
+    @{Name='Nessus DEB';     Pattern='(?i)^nessus.*amd64.*\.deb$'}
+  )
+  while ($true) {
+    $missing = @()
+    $files = Get-ChildItem -Path $IsoDir -File -ErrorAction SilentlyContinue
+    foreach ($p in $patterns) {
+      if (-not ($files | Where-Object { $_.Name -match $p.Pattern })) {
+        $missing += $p
       }
     }
-  }
-  return $pairs
-}
-
-function Prompt-MissingIsosLoop {
-  param([pscustomobject[]]$IsoList, [string]$IsoDir)
-  while ($true) {
-    $missing = $IsoList | Where-Object { -not $_.Exists }
-    if (($missing | Measure-Object).Count -eq 0) { return }
-    Write-Warning "You need to download the following ISOs/packages before continuing:"
-    $missing | ForEach-Object {
-      Write-Host ("  - {0}  ->  {1}" -f $_.Key, $_.FileName)
-    }
-    Write-Host ("Store them here: {0}" -f $IsoDir)
-    $ans = Read-Host "[L] re-check or [A] abort?"
-    if ($ans -match '^[Aa]') { Write-Host "Aborting as requested."; exit 1 }
-    foreach ($x in $IsoList) { $x.Exists = Test-Path $x.FullPath }
+    if ($missing.Count -eq 0) { return }
+    Write-Warning "Manual downloads required:"
+    foreach ($m in $missing) { Write-Host ("  - {0}" -f $m.Name) }
+    Write-Host ("Place the files in: {0}" -f $IsoDir)
+    $ans = Read-Host "[R]e-check or [A]bort"
+    if ($ans -match '^[Aa]') { throw "Missing manual downloads." }
   }
 }
 
-function Find-Exe {
-  param([string[]]$Candidates)
-  foreach ($p in $Candidates) { if (Test-Path $p) { return $p } }
-  return $null
-}
-
-function Import-VMnetProfile {
-  $repoRoot = 'E:\SOC-9000'
-  $gen = Join-Path $repoRoot 'scripts\generate-vmnet-profile.ps1'
-  if (-not (Test-Path $gen)) { throw "Missing $gen" }
-
-  $out = Join-Path $repoRoot 'artifacts\network\vmnet-profile.txt'
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -OutFile $out
-  if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed." }
-
-  if ($ManualNetwork) { throw "Forced manual networking" }
-
-  $vnetlib = Find-Exe @(
-    "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe",
-    "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe"
-  )
-  if (-not $vnetlib) {
-    throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+ (Virtual Network Editor) and re-run."
+function Run-IfExists([string]$ScriptPath,[string]$FriendlyName) {
+  if (Test-Path $ScriptPath) {
+    Write-Host ("Running {0} ..." -f $FriendlyName)
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Verbose
+    if ($LASTEXITCODE -ne 0) { throw ("{0} exited with code {1}" -f $FriendlyName,$LASTEXITCODE) }
+    Write-Host ("{0}: OK" -f $FriendlyName) -ForegroundColor Green
   }
-
-  Write-Host "Importing VMnet profile via vnetlib64 ..."
-  & $vnetlib -- stop dhcp
-  if ($LASTEXITCODE -ne 0) { Write-Warning "stop dhcp returned $LASTEXITCODE" }
-  & $vnetlib -- stop nat
-  if ($LASTEXITCODE -ne 0) { Write-Warning "stop nat returned $LASTEXITCODE" }
-
-  & $vnetlib -- import $out
-  if ($LASTEXITCODE -ne 0) { throw "vnetlib64 import failed ($LASTEXITCODE)." }
-
-  & $vnetlib -- start dhcp
-  if ($LASTEXITCODE -ne 0) { Write-Warning "start dhcp returned $LASTEXITCODE" }
-  & $vnetlib -- start nat
-  if ($LASTEXITCODE -ne 0) { Write-Warning "start nat returned $LASTEXITCODE" }
-
-  Write-Host "VMware networking: OK (import applied)"
 }
 
-# ----------------- main flow -----------------
+function Configure-VMnets([string]$RepoRoot) {
+  if ($ManualNetwork) { throw "Manual network configuration requested." }
+  $cfg = Join-Path $RepoRoot 'scripts\\configure-vmnet.ps1'
+  if (-not (Test-Path $cfg)) { throw "Missing configure-vmnet.ps1" }
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfg
+  if ($LASTEXITCODE -ne 0) { throw "configure-vmnet.ps1 failed ($LASTEXITCODE)." }
+  Write-Host "VMware networking: OK" -ForegroundColor Green
+}
+
+# --- main ---
+
 Ensure-Admin
-Require-DriveE
 
-$InstallRoot = 'E:\SOC-9000-Install'
-$RepoRoot    = 'E:\SOC-9000'
-$IsoDir      = Join-Path $InstallRoot 'isos'
-
-Ensure-Dirs -InstallRoot $InstallRoot -RepoRoot $RepoRoot
-
-$envPath = Join-Path $RepoRoot '.env'
+$ScriptRoot = Split-Path -Parent $PSCommandPath
+$RepoRoot   = (Resolve-Path (Join-Path $ScriptRoot '..')).Path
+$envPath    = Join-Path $RepoRoot '.env'
 if (-not (Test-Path $envPath)) {
-  $envExample = Join-Path $RepoRoot '.env.example'
-  if (Test-Path $envExample) {
-    Copy-Item $envExample $envPath -Force
-    Write-Host "No .env found; seeded it from .env.example."
+  $example = Join-Path $RepoRoot '.env.example'
+  if (Test-Path $example) {
+    Copy-Item $example $envPath -Force
+    Write-Host "Created .env from template." -ForegroundColor Yellow
   }
 }
-
 $envMap = Read-DotEnv $envPath
-if (-not $envMap.ContainsKey('ISO_DIR')) { $envMap['ISO_DIR'] = $IsoDir }
+$IsoDir       = if ($envMap.ContainsKey('ISO_DIR')) { $envMap['ISO_DIR'] } else { Join-Path $RepoRoot 'isos' }
+$ArtifactsDir = if ($envMap.ContainsKey('ARTIFACTS_DIR')) { $envMap['ARTIFACTS_DIR'] } else { Join-Path $RepoRoot 'artifacts' }
+$NetworkDir   = Join-Path $ArtifactsDir 'network'
+$LogDir       = Join-Path $RepoRoot 'logs'
+$null = New-Item -ItemType Directory -Force -Path $IsoDir, $ArtifactsDir, $NetworkDir, $LogDir
 
-# Ensure base images are present and validated
-$dlScript = Join-Path $RepoRoot 'scripts\download-isos.ps1'
+try { Stop-Transcript | Out-Null } catch {}
+$ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
+$log = Join-Path $LogDir "setup-soc9000-$ts.log"
+Start-Transcript -Path $log -Force | Out-Null
+
+Show-Step "Ensuring ISO downloads"
+$dlScript = Join-Path $RepoRoot 'scripts\\download-isos.ps1'
 if (Test-Path $dlScript) {
-  Write-Host 'Ensuring ISO downloads...'
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $dlScript -IsoDir $envMap['ISO_DIR']
-  if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
-  Write-Host 'ISO download step: OK'
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $dlScript -IsoDir $IsoDir
+  if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed ($LASTEXITCODE)" }
 }
 
-$vhScript = Join-Path $RepoRoot 'scripts\verify-hashes.ps1'
+Show-Step "Waiting for manual downloads"
+Wait-ForManualDownloads -IsoDir $IsoDir
+
+Show-Step "Verifying checksums"
+$vhScript = Join-Path $RepoRoot 'scripts\\verify-hashes.ps1'
 if (Test-Path $vhScript) {
-  Write-Host 'Verifying ISO checksums...'
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $vhScript -IsoDir $envMap['ISO_DIR'] -Strict
-  if ($LASTEXITCODE -ne 0) { throw "verify-hashes.ps1 failed with exit code $LASTEXITCODE" }
-  Write-Host 'ISO checksum verification: OK'
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $vhScript -IsoDir $IsoDir -Strict
+  if ($LASTEXITCODE -ne 0) { throw "verify-hashes.ps1 failed ($LASTEXITCODE)" }
 }
 
-$isoList = @(Get-RequiredIsos -EnvMap $envMap -IsoDir $envMap['ISO_DIR'])
-if ($isoList.Count -gt 0) {
-  Prompt-MissingIsosLoop -IsoList $isoList -IsoDir $envMap['ISO_DIR']
-} else {
-  Write-Host "No required ISO keys were found in .env - skipping ISO check."
-}
-
+Show-Step "Configuring VMware networks"
 try {
-  Import-VMnetProfile
-}
-catch {
-  Write-Warning ("Automatic network import failed: {0}" -f $_.Exception.Message)
-  Write-Host "Please configure the VMnets manually in the Virtual Network Editor, then close it to continue."
-  $vmnetcfg = Find-Exe @(
-    "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe",
-    "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe"
-  )
-  if ($vmnetcfg) {
-    Start-Process -FilePath $vmnetcfg -Wait
-  } else {
-    Write-Warning "vmnetcfg.exe was not found. Open VMware Workstation -> Edit -> Virtual Network Editor, configure, then come back."
-    Read-Host "Press ENTER to continue after you have configured the networks"
-  }
+  Configure-VMnets -RepoRoot $RepoRoot
+} catch {
+  Write-Warning ("Automatic network setup failed: {0}" -f $_.Exception.Message)
+  Write-Host "Please configure VMnets manually via Virtual Network Editor and press ENTER to continue."
+  $vmnetcfg = @(
+    "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmnetcfg.exe",
+    "C:\\Program Files\\VMware\\VMware Workstation\\vmnetcfg.exe"
+  ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+  if ($vmnetcfg) { Start-Process -FilePath $vmnetcfg -Wait } else { Read-Host 'Press ENTER when done' | Out-Null }
 }
 
-function Run-IfExists { param([string]$ScriptPath,[string]$FriendlyName)
-if (Test-Path $ScriptPath) {
-  Write-Host ("Running {0} ..." -f $FriendlyName)
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Verbose
-  if ($LASTEXITCODE -ne 0) { throw ("{0} exited with code {1}" -f $FriendlyName,$LASTEXITCODE) }
-  Write-Host ("{0}: OK" -f $FriendlyName)
-}
-}
+Show-Step "Verifying networking"
+Run-IfExists (Join-Path $RepoRoot 'scripts\\verify-networking.ps1') 'verify-networking.ps1'
 
-try {
-  Run-IfExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')       'wsl-prepare.ps1'
-  Run-IfExists (Join-Path $RepoRoot 'scripts\wsl-bootstrap.ps1')     'wsl-bootstrap.ps1'
-  Run-IfExists (Join-Path $RepoRoot 'scripts\host-prepare.ps1')      'host-prepare.ps1'
-  Run-IfExists (Join-Path $RepoRoot 'scripts\verify-networking.ps1') 'verify-networking.ps1'
-  Run-IfExists (Join-Path $RepoRoot 'scripts\lab-up.ps1')            'lab-up.ps1'
-}
-catch {
-  Write-Error ("A follow-up step failed: {0}" -f $_.Exception.Message)
-  Write-Host "Fix the issue above and re-run this script. Nothing destructive was done."
-  Read-Host 'Press ENTER to exit'
-  exit 1
-}
+Show-Step "Bootstrapping WSL and Ansible"
+Run-IfExists (Join-Path $RepoRoot 'scripts\\wsl-prepare.ps1')       'wsl-prepare.ps1'
+Run-IfExists (Join-Path $RepoRoot 'scripts\\wsl-bootstrap.ps1')     'wsl-bootstrap.ps1'
+Run-IfExists (Join-Path $RepoRoot 'scripts\\copy-ssh-key-to-wsl.ps1') 'copy-ssh-key-to-wsl.ps1'
+Run-IfExists (Join-Path $RepoRoot 'scripts\\host-prepare.ps1')      'host-prepare.ps1'
+Run-IfExists (Join-Path $RepoRoot 'scripts\\lab-up.ps1')            'lab-up.ps1'
 
 Write-Host ""
-Write-Host 'All requested steps completed.'
-Read-Host 'Press ENTER to exit'
+Write-Host 'All requested steps completed.' -ForegroundColor Green
+Stop-Transcript | Out-Null
+Read-Host 'Press ENTER to exit' | Out-Null
+
