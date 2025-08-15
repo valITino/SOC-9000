@@ -15,20 +15,36 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
           Import-Module Pester
+
+      - name: Discover tests
+        shell: pwsh
+        run: |
+          $tests = Get-ChildItem -Path . -Include '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue
+          if ($tests) {
+            "HAS_TESTS=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "Found $($tests.Count) test file(s)."
+          } else {
+            "HAS_TESTS=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Host "No tests found. Skipping Pester run."
+          }
+
       - name: Run unit tests (Pester 5 config)
+        if: env.HAS_TESTS == '1'
         shell: pwsh
         run: |
           $conf = New-PesterConfiguration
-          $conf.Run.Path = 'tests'
+          $conf.Run.Path = '.'
           $conf.Filter.Tag = 'unit'
           $conf.Run.PassThru = $true
-          $conf.Run.Exit = $true                    # non-zero exit on failures
+          $conf.Run.Exit = $true
           $conf.Output.Verbosity = 'Detailed'
           $conf.TestResult.Enabled = $true
           $conf.TestResult.OutputPath = 'TestResults.xml'
           $conf.TestResult.OutputFormat = 'NUnitXml'
           Invoke-Pester -Configuration $conf
-      - name: Upload test results
+
+      - name: Upload test results (if any)
+        if: hashFiles('**/TestResults.xml') != ''
         uses: actions/upload-artifact@v4
         with:
           name: pester-results
