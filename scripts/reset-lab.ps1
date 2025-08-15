@@ -19,11 +19,11 @@ if ($Hard) {
   # Load .env for CH_IP_MGMT
   if (Test-Path ".env") {
     (Get-Content ".env" | ? {$_ -and $_ -notmatch '^\s*#'}) | % {
-      if ($_ -match '^\s*([^=]+)=(.*)$'){ $env:$($matches[1].Trim())=$matches[2].Trim() }
+      if ($_ -match '^\s*([^=]+)=(.*)$'){ Set-Item -Path "Env:$($matches[1].Trim())" -Value $matches[2].Trim() }
     }
   }
-  $host = $env:CH_IP_MGMT; if(-not $host){ $host="172.22.10.10" }
-  wsl bash -lc "ssh -o StrictHostKeyChecking=no labadmin@$host 'sudo rm -rf /var/lib/rancher/k3s/storage/* /srv/nfs/* 2>/dev/null || true'"
+  $hostIp = $env:CH_IP_MGMT; if(-not $hostIp){ $hostIp="172.22.10.10" }
+  wsl bash -lc "ssh -o StrictHostKeyChecking=no labadmin@$hostIp 'sudo rm -rf /var/lib/rancher/k3s/storage/* /srv/nfs/* 2>/dev/null || true'"
 }
 
 Write-Host "Re-applying platform & apps..."
