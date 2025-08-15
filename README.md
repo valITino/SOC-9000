@@ -59,7 +59,7 @@ pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, teleme
 pwsh -File .\scripts\lab-status.ps1
 ```
 
-Before building the installer script, ensure Git and PowerShell 7 are installed:
+Before building the installer script, ensure Git, PowerShell 7, Packer, and kubectl are installed:
 
 ```powershell
 pwsh -File .\scripts\install-prereqs.ps1

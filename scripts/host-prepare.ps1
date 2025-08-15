@@ -26,7 +26,6 @@ $freeGB = if($drive){ [math]::Round($drive.Free/1GB,2) } else { 0 }
 
 # VMware network configuration
 & (Join-Path $PSScriptRoot 'configure-vmnet.ps1')
-$missing = @()
 # WSL / Ansible (best effort)
 $wsl = (wsl -l -v 2>$null) -join "`n"
 if (-not $wsl) {
@@ -59,7 +58,7 @@ $rows = @(
  @{Item="vmrun.exe"; Detail=($vmrun ?? "MISSING")}
  @{Item="Packer"; Detail=($packer ?? "MISSING")}
  @{Item="Disk E:"; Detail="$freeGB GB free (>= 300 GB rec.)"}
- @{Item="VMware nets"; Detail=($(if($missing){ "Missing: "+($missing -join ', ') } else { "OK: VMnet8,20,21,22,23" }))}
+ @{Item="VMware nets"; Detail="VMnet8,20,21,22,23"}
  @{Item="WSL"; Detail=($(if($wsl){$wsl.Trim()}else{"Install: wsl --install -d Ubuntu-22.04"}))}
  @{Item="Ansible (WSL)"; Detail=($(if($ans){$ans.Trim()}else{"In WSL: apt install python3-pip python3-venv openssh-client && pip install --user ansible==9.*"}))}
  @{Item="SSH key"; Detail=($(if(Test-Path $sshKey){$sshKey}else{"MISSING"}))}
@@ -68,15 +67,6 @@ $rows | % { "{0,-16} {1}" -f $_.Item, $_.Detail }
 
 Write-Host "`nNext steps:"
 $step = 1
-if ($missing) {
-  Write-Host "${step}) Virtual Network Editor (Admin):"
-  Write-Host "   - VMnet8  : NAT (DHCP ON)"
-  Write-Host "   - VMnet20 : Host-only 172.22.10.0/24, DHCP OFF"
-  Write-Host "   - VMnet21 : Host-only 172.22.20.0/24, DHCP OFF"
-  Write-Host "   - VMnet22 : Host-only 172.22.30.0/24, DHCP OFF"
-  Write-Host "   - VMnet23 : Host-only 172.22.40.0/24, DHCP OFF"
-  $step++
-}
 Write-Host "${step}) Place downloads in ${IsoDir}:"
 Write-Host "   - pfSense CE ISO (Netgate account required)"
 Write-Host "   - Ubuntu 22.04 (AMD64) -> $(Join-Path $IsoDir 'ubuntu-22.04.iso')"
