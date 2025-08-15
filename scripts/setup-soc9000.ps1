@@ -144,7 +144,7 @@ $isoList = Get-RequiredIsos -EnvMap $envMap -IsoDir $envMap['ISO_DIR']
 if ($isoList.Count -gt 0) {
   Prompt-MissingIsosLoop -IsoList $isoList -IsoDir $envMap['ISO_DIR']
 } else {
-  Write-Host "No required ISO keys were found in .env — skipping ISO check."
+  Write-Host "No required ISO keys were found in .env - skipping ISO check."
 }
 
 try {
@@ -188,4 +188,4 @@ catch {
 }
 
 Write-Host ""
-Write-Host "All requested steps completed."
+Write-Host 'All requested steps completed.'
