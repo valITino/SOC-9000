@@ -1,5 +1,16 @@
 # End-to-end bring-up for SOC-9000
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
+
+function Get-DotEnv {
+  param([string]$Path = '.env')
+  if(!(Test-Path $Path)){ throw ".env not found" }
+  $map=@{}
+  Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
+    if($_ -match '^([^=]+)=(.*)$'){ $map[$matches[1].Trim()] = $matches[2].Trim() }
+  }
+  return $map
+}
+
 function Run($p){
   Write-Host "`n== $p" -ForegroundColor Cyan
   & pwsh -NoProfile -ExecutionPolicy Bypass -File $p
@@ -7,15 +18,47 @@ function Run($p){
 }
 
 # 0) Env + preflight
-if (!(Test-Path ".env")) { Copy-Item .env.example .env -Force; throw "Edit .env then re-run." }
-# Minimal ISO checks (skip pfSense since it's manual install step)
-$isoU = (Get-Content .env) -match '^ISO_UBUNTU=' | % { $_.Split('=')[1].Trim() }
-$isoW = (Get-Content .env) -match '^ISO_WINDOWS=' | % { $_.Split('=')[1].Trim() }
-$isoDir = (Get-Content .env) -match '^ISO_DIR=' | % { $_.Split('=')[1].Trim() }
-foreach($f in @($isoU,$isoW)){ if (!(Test-Path (Join-Path $isoDir $f))) { Write-Warning "Missing ISO: $f in $isoDir" } }
+if (!(Test-Path '.env')) { Copy-Item .env.example .env -Force; throw "Edit .env then re-run." }
+$envMap = Get-DotEnv '.env'
+foreach($k in 'ISO_DIR','ISO_UBUNTU','ISO_WINDOWS'){
+  if(-not $envMap[$k]){ throw ".env missing $k" }
+}
+$isoDir = $envMap.ISO_DIR
+foreach($f in @($envMap.ISO_UBUNTU,$envMap.ISO_WINDOWS)){
+  if(!(Test-Path (Join-Path $isoDir $f))){ Write-Warning "Missing ISO: $f in $isoDir" }
+}
+function Assert-Tool {
+  param([string]$Exe,[string]$Hint)
+  try {
+    Get-Command $Exe -ErrorAction Stop | Out-Null
+  } catch {
+    throw "$Exe not found. $Hint"
+  }
+}
+Assert-Tool 'packer' 'Install from https://developer.hashicorp.com/packer/downloads or winget install HashiCorp.Packer'
+Assert-Tool 'kubectl' 'Install with: winget install --id Kubernetes.kubectl'
+try { wsl -l -v 2>$null | Out-Null } catch { throw 'WSL not available. Install with: wsl --install -d Ubuntu-22.04' }
+
+Write-Host "Preflight checks passed." -ForegroundColor Green
 
 # 1) Host prep (folders, hints)
 Run "scripts/host-prepare.ps1"
+
+Write-Host "`nPlanned actions:" -ForegroundColor Cyan
+$check = @(
+  '1) Build base images',
+  '2) Wire VMX networks + static MACs',
+  '3) Apply netplan on ContainerHost',
+  '4) pfSense manual install',
+  '5) pfSense config + k3s + MetalLB + Portainer',
+  '6) TLS + platform apps',
+  '7) Wazuh',
+  '8) TheHive + Cortex',
+  '9) Nessus',
+  '10) Expose Wazuh + telemetry',
+  '11) Hosts refresh + status'
+)
+$check | ForEach-Object { Write-Host "  $_" }
 
 # 2) Build base images (container-host, windows victim)
 Run "scripts/build-packer.ps1"

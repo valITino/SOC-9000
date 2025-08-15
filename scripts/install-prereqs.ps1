@@ -1,5 +1,5 @@
 <#
-    install-prereqs.ps1: Installs Git and PowerShell 7 if they are not already present.
+    install-prereqs.ps1: Installs PowerShell 7, Packer, kubectl, and Git if they are not already present.
 #>
 
 [CmdletBinding()]
@@ -45,13 +45,31 @@ if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command packer -ErrorAction SilentlyContinue)) {
     Write-Host "Packer not found. Installing via winget..." -ForegroundColor Cyan
     try {
-        winget install --id HashiCorp.Packer --accept-package-agreements --accept-source-agreements
-        Refresh-Path
+    winget install --id HashiCorp.Packer --accept-package-agreements --accept-source-agreements
+    Refresh-Path
     } catch {
         Write-Warning "Failed to install Packer via winget. You may need to install it manually."
     }
 } else {
     Write-Host "Packer already installed." -ForegroundColor Green
+}
+
+# kubectl
+if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {
+    Write-Host "kubectl not found. Installing via winget..." -ForegroundColor Cyan
+    try {
+        winget install --id Kubernetes.kubectl --source winget --accept-package-agreements --accept-source-agreements
+        Refresh-Path
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Warning "winget returned exit code $LASTEXITCODE for kubectl"
+            $failed = $true
+        }
+    } catch {
+        Write-Warning "Failed to install kubectl via winget. You may need to install it manually."
+        $failed = $true
+    }
+} else {
+    Write-Host "kubectl already installed." -ForegroundColor Green
 }
 
 # Git

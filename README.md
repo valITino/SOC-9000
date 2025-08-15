@@ -59,7 +59,7 @@ pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, teleme
 pwsh -File .\scripts\lab-status.ps1
 ```
 
-Before building the installer script, ensure Git and PowerShell 7 are installed:
+Before building the installer script, ensure Git, PowerShell 7, Packer, and kubectl are installed:
 
 ```powershell
 pwsh -File .\scripts\install-prereqs.ps1
@@ -79,6 +79,17 @@ Validate that script paths resolve correctly without any network activity:
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
 ```
+
+### Networking
+
+Set up and validate VMware virtual networks:
+
+```powershell
+pwsh -File .\scripts\configure-vmnet.ps1
+pwsh -File .\scripts\verify-networking.ps1
+```
+
+`configure-vmnet.ps1` creates or updates VMnet8 and VMnet20–23 with the correct subnets. `verify-networking.ps1` performs quick assertions and reports success when adapters, services, and hosts entries look good.
 
 During the bring-up process you will still perform a short manual pfSense install (Chunk 3); the scripts then auto‑configure it.
 
