@@ -16,9 +16,7 @@ function Ensure-Admin {
 
 function Find-Exe {
   param([string[]]$Candidates)
-  foreach ($p in $Candidates) {
-    if (Test-Path $p) { return $p }
-  }
+  foreach ($p in $Candidates) { if (Test-Path $p) { return $p } }
   return $null
 }
 

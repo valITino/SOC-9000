@@ -83,7 +83,6 @@ function Find-Exe {
 }
 
 function Import-VMnetProfile {
-  # Uses the script parameter $ManualNetwork to decide manual fallback
   $repoRoot = 'E:\SOC-9000'
   $gen = Join-Path $repoRoot 'scripts\generate-vmnet-profile.ps1'
   if (-not (Test-Path $gen)) { throw "Missing $gen" }
@@ -166,7 +165,6 @@ catch {
   }
 }
 
-# Optional follow-ups (run only if present)
 function Run-IfExists { param([string]$ScriptPath,[string]$FriendlyName)
 if (Test-Path $ScriptPath) {
   Write-Host ("Running {0} ..." -f $FriendlyName)

@@ -9,17 +9,25 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install Pester
+      - name: Install Pester 5
         shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module Pester -Scope CurrentUser -Force
-      - name: Run unit tests
+          Install-Module Pester -Scope CurrentUser -Force -MinimumVersion 5.5.0
+          Import-Module Pester
+      - name: Run unit tests (Pester 5 config)
         shell: pwsh
         run: |
-          Invoke-Pester -Path tests -Tag unit -CI -Output Detailed -OutputFormat NUnitXml -OutputFile TestResults.xml
+          $conf = New-PesterConfiguration
+          $conf.Run.Path = 'tests'
+          $conf.Filter.Tag = 'unit'
+          $conf.Run.PassThru = $true
+          $conf.Run.Exit = $true                    # non-zero exit on failures
+          $conf.Output.Verbosity = 'Detailed'
+          $conf.TestResult.Enabled = $true
+          $conf.TestResult.OutputPath = 'TestResults.xml'
+          $conf.TestResult.OutputFormat = 'NUnitXml'
+          Invoke-Pester -Configuration $conf
       - name: Upload test results
         uses: actions/upload-artifact@v4
         with:
