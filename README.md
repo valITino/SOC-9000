@@ -286,6 +286,13 @@ pwsh -File .\scripts\lab-up.ps1
 
 If names fail: run `scripts\hosts-refresh.ps1` as Admin.
 
+### Nessus VM notes
+
+- Set `NESSUS_ACTIVATION_CODE` in `.env` (or you'll be prompted during `scripts\nessus-vm-build-and-config.ps1`).
+- Place the Nessus `.deb` in `ISO_DIR` (defaults to `.\isos`) and ensure `NESSUS_DEB` matches the filename.
+- URL: <https://nessus.lab.local:8834> after deployment.
+
+
 ### TheHive ↔ Cortex (once)
 
 1. Cortex: create Admin + API key
