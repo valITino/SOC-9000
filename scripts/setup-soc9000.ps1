@@ -4,6 +4,12 @@ param([switch]$ManualNetwork)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+trap {
+  Write-Error $_
+  Read-Host 'Press ENTER to exit'
+  exit 1
+}
+
 function Ensure-Admin {
   $id  = [Security.Principal.WindowsIdentity]::GetCurrent()
   $pri = New-Object Security.Principal.WindowsPrincipal($id)
@@ -201,8 +207,10 @@ try {
 catch {
   Write-Error ("A follow-up step failed: {0}" -f $_.Exception.Message)
   Write-Host "Fix the issue above and re-run this script. Nothing destructive was done."
+  Read-Host 'Press ENTER to exit'
   exit 1
 }
 
 Write-Host ""
 Write-Host 'All requested steps completed.'
+Read-Host 'Press ENTER to exit'
