@@ -57,6 +57,7 @@ function Find-VNetLib {
 
 function Invoke-VMnet([string[]]$Args) {
   Write-Verbose ("vnetlib64 -- " + ($Args -join ' '))
+  $global:LASTEXITCODE = 0
   & $script:VNetLib -- @Args
   if ($LASTEXITCODE -ne 0) { throw "vnetlib failed ($LASTEXITCODE): $($Args -join ' ')" }
 }
