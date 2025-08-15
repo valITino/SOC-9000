@@ -38,28 +38,6 @@ function Show-Step([string]$Msg) {
   Write-Host "==== $Msg ====" -ForegroundColor Cyan
 }
 
-function Wait-ForManualDownloads([string]$IsoDir) {
-  $patterns = @(
-    @{Name='Windows 11 ISO'; Pattern='(?i).*win(dows)?[^\w]*11.*\.iso$'},
-    @{Name='pfSense ISO';    Pattern='(?i)(pfsense|netgate).*\.iso(\.gz)?$'},
-    @{Name='Nessus DEB';     Pattern='(?i)^nessus.*amd64.*\.deb$'}
-  )
-  while ($true) {
-    $missing = @()
-    $files = Get-ChildItem -Path $IsoDir -File -ErrorAction SilentlyContinue
-    foreach ($p in $patterns) {
-      if (-not ($files | Where-Object { $_.Name -match $p.Pattern })) {
-        $missing += $p
-      }
-    }
-    if ($missing.Count -eq 0) { return }
-    Write-Warning "Manual downloads required:"
-    foreach ($m in $missing) { Write-Host ("  - {0}" -f $m.Name) }
-    Write-Host ("Place the files in: {0}" -f $IsoDir)
-    $ans = Read-Host "[R]e-check or [A]bort"
-    if ($ans -match '^[Aa]') { throw "Missing manual downloads." }
-  }
-}
 
 function Run-IfExists([string]$ScriptPath,[string]$FriendlyName) {
   if (Test-Path $ScriptPath) {
@@ -75,8 +53,16 @@ function Configure-VMnets([string]$RepoRoot) {
   $cfg = Join-Path $RepoRoot 'scripts\\configure-vmnet.ps1'
   if (-not (Test-Path $cfg)) { throw "Missing configure-vmnet.ps1" }
   & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfg
-  if ($LASTEXITCODE -ne 0) { throw "configure-vmnet.ps1 failed ($LASTEXITCODE)." }
-  Write-Host "VMware networking: OK" -ForegroundColor Green
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "VMware networking: OK" -ForegroundColor Green
+    return
+  }
+  Write-Warning ("configure-vmnet.ps1 failed ({0}); attempting fallback" -f $LASTEXITCODE)
+  $hp = Join-Path $RepoRoot 'scripts\\host-prepare.ps1'
+  if (-not (Test-Path $hp)) { throw "Missing host-prepare.ps1" }
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $hp
+  if ($LASTEXITCODE -ne 0) { throw "host-prepare.ps1 failed ($LASTEXITCODE)" }
+  Write-Host "VMware networking (fallback import): OK" -ForegroundColor Green
 }
 
 # --- main ---
@@ -94,7 +80,11 @@ if (-not (Test-Path $envPath)) {
   }
 }
 $envMap = Read-DotEnv $envPath
-$IsoDir       = if ($envMap.ContainsKey('ISO_DIR')) { $envMap['ISO_DIR'] } else { Join-Path $RepoRoot 'isos' }
+$IsoDir = if ($envMap.ContainsKey('ISO_DIR')) {
+  $envMap['ISO_DIR']
+} else {
+  if (Test-Path 'E:\\') { 'E:\\SOC-9000-Install\\isos' } else { Join-Path $RepoRoot 'install\\isos' }
+}
 $ArtifactsDir = if ($envMap.ContainsKey('ARTIFACTS_DIR')) { $envMap['ARTIFACTS_DIR'] } else { Join-Path $RepoRoot 'artifacts' }
 $NetworkDir   = Join-Path $ArtifactsDir 'network'
 $LogDir       = Join-Path $RepoRoot 'logs'
@@ -111,10 +101,6 @@ if (Test-Path $dlScript) {
   & pwsh -NoProfile -ExecutionPolicy Bypass -File $dlScript -IsoDir $IsoDir
   if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed ($LASTEXITCODE)" }
 }
-
-Show-Step "Waiting for manual downloads"
-Wait-ForManualDownloads -IsoDir $IsoDir
-
 Show-Step "Verifying checksums"
 $vhScript = Join-Path $RepoRoot 'scripts\\verify-hashes.ps1'
 if (Test-Path $vhScript) {
@@ -132,7 +118,8 @@ try {
     "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmnetcfg.exe",
     "C:\\Program Files\\VMware\\VMware Workstation\\vmnetcfg.exe"
   ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if ($vmnetcfg) { Start-Process -FilePath $vmnetcfg -Wait } else { Read-Host 'Press ENTER when done' | Out-Null }
+  if ($vmnetcfg) { Start-Process -FilePath $vmnetcfg -Wait }
+  Read-Host 'Press ENTER when done' | Out-Null
 }
 
 Show-Step "Verifying networking"
@@ -142,7 +129,6 @@ Show-Step "Bootstrapping WSL and Ansible"
 Run-IfExists (Join-Path $RepoRoot 'scripts\\wsl-prepare.ps1')       'wsl-prepare.ps1'
 Run-IfExists (Join-Path $RepoRoot 'scripts\\wsl-bootstrap.ps1')     'wsl-bootstrap.ps1'
 Run-IfExists (Join-Path $RepoRoot 'scripts\\copy-ssh-key-to-wsl.ps1') 'copy-ssh-key-to-wsl.ps1'
-Run-IfExists (Join-Path $RepoRoot 'scripts\\host-prepare.ps1')      'host-prepare.ps1'
 Run-IfExists (Join-Path $RepoRoot 'scripts\\lab-up.ps1')            'lab-up.ps1'
 
 Write-Host ""

@@ -17,8 +17,7 @@ param(
   [string]$Vmnet21Subnet  = "172.22.20.0",
   [string]$Vmnet22Subnet  = "172.22.30.0",
   [string]$Vmnet23Subnet  = "172.22.40.0",
-  [string]$HostOnlyMask   = "255.255.255.0",
-  [switch]$WhatIf
+  [string]$HostOnlyMask   = "255.255.255.0"
 )
 
 Set-StrictMode -Version Latest
@@ -216,8 +215,8 @@ $importText = Build-ImportCommands -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmne
 $import = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
 Set-Content -Path $import -Value $importText -Encoding ASCII
 
-if($WhatIf){
-  Write-Host "`n[WhatIf] vnetlib import commands to be applied:" -ForegroundColor Cyan
+if(-not $PSCmdlet.ShouldProcess("VMware VMnet configuration","Apply import commands")){
+  Write-Host "`n[Preview] vnetlib import commands to be applied:" -ForegroundColor Cyan
   Write-Host $importText
   Stop-Transcript | Out-Null
   exit 0
