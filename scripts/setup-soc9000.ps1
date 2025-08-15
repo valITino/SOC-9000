@@ -70,7 +70,7 @@ function Prompt-MissingIsosLoop {
   param([pscustomobject[]]$IsoList, [string]$IsoDir)
   while ($true) {
     $missing = $IsoList | Where-Object { -not $_.Exists }
-    if ($missing.Count -eq 0) { return }
+    if (($missing | Measure-Object).Count -eq 0) { return }
     Write-Warning "You need to download the following ISOs/packages before continuing:"
     $missing | ForEach-Object {
       Write-Host ("  - {0}  ->  {1}" -f $_.Key, $_.FileName)
