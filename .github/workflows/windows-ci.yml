@@ -5,10 +5,14 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+
 jobs:
   test:
     runs-on: windows-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install Pester 5
         shell: pwsh
         run: |
@@ -19,21 +23,21 @@ jobs:
       - name: Discover tests
         shell: pwsh
         run: |
-          $tests = Get-ChildItem -Path . -Include '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue
+          $tests = Get-ChildItem -Path . -Include "*.Tests.ps1" -Recurse -ErrorAction SilentlyContinue
           if ($tests) {
             "HAS_TESTS=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-            Write-Host "Found $($tests.Count) test file(s)."
+            Write-Host ("Found {0} test file(s)." -f $tests.Count)
           } else {
             "HAS_TESTS=0" | Out-File -FilePath $env:GITHUB_ENV -Append
             Write-Host "No tests found. Skipping Pester run."
           }
 
-      - name: Run unit tests (Pester 5 config)
-        if: env.HAS_TESTS == '1'
+      - name: Run unit tests (Pester 5)
+        if: ${{ env.HAS_TESTS == '1' }}
         shell: pwsh
         run: |
           $conf = New-PesterConfiguration
-          $conf.Run.Path = '.'
+          $conf.Run.Path = 'tests'
           $conf.Filter.Tag = 'unit'
           $conf.Run.PassThru = $true
           $conf.Run.Exit = $true
@@ -44,7 +48,7 @@ jobs:
           Invoke-Pester -Configuration $conf
 
       - name: Upload test results (if any)
-        if: hashFiles('**/TestResults.xml') != ''
+        if: ${{ hashFiles('**/TestResults.xml') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: pester-results

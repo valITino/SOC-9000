@@ -58,12 +58,9 @@ pwsh -File .\scripts\install-prereqs.ps1
 
 If winget is missing or a package fails to install, the script writes an error and exits.  The standalone installer bundles this script and aborts if prerequisites cannot be installed.
 
-To build the self‑contained installer script and package the repository:
+To build the self‑contained setup script and package the repository:
 
-```powershell
-pwsh -File .\scripts\build-installer.ps1
-pwsh -File .\scripts\package-release.ps1
-```
+
 
 These scripts are especially useful when preparing a GitHub release.
 
@@ -91,7 +88,7 @@ pwsh -ExecutionPolicy Bypass -File .\scripts\host-prepare.ps1
 Alternatively, use the standalone installer to perform the clone, ISO download, and bring‑up in one step:
 
 ```powershell
-pwsh -File .\scripts\standalone-installer.ps1
+pwsh -File .\scripts/setup-soc9000.ps1
 ```
 
 ## Notes

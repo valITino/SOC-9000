@@ -34,7 +34,7 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 Run the one-shot installer to configure and verify VMware networking:
 
 ```powershell
-pwsh -File .\SOC-9000-installer.ps1 -Verbose
+pwsh -File .\scripts/setup-soc9000.ps1 -Verbose
 ```
 
 Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
@@ -43,7 +43,7 @@ Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
 
 SOC‑9000 offers three ways to get started, depending on your level of comfort with Git and PowerShell.  Use whichever fits your needs.
 
-1. **One‑click installer (end‑user)** — Download a prebuilt `SOC-9000-installer.ps1` from a GitHub release, right‑click and choose **Run with PowerShell** as Administrator.  The script clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
+1. **One‑click installer (end‑user)** — Download a prebuilt `scripts/setup-soc9000.ps1` from a GitHub release, right‑click and choose **Run with PowerShell** as Administrator.  The script clones the repository into `E:\SOC-9000` (by default) and uses `E:\SOC-9000-Pre-Install` for ISO downloads and build artifacts.  It then updates `.env` and runs the full bring‑up.  You don’t need to install Git or run Make yourself.
 2. **Starter zip (no Git)** — Download `SOC-9000-starter.zip` from the release page.  Extract it to `E:\SOC-9000\SOC-9000`, open PowerShell as Administrator, and run:
 
    ```powershell
@@ -67,18 +67,15 @@ pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, teleme
 pwsh -File .\scripts\lab-status.ps1
 ```
 
-Before building the installer script, ensure Git, PowerShell 7, Packer, and kubectl are installed:
+Before building the setup script, ensure Git, PowerShell 7, Packer, and kubectl are installed:
 
 ```powershell
 pwsh -File .\scripts\install-prereqs.ps1
 ```
 
-You can then build the self‑contained installer script via:
+You can then build the self‑contained setup script via:
 
-```powershell
-pwsh -File .\scripts\build-installer.ps1             # produces SOC-9000-installer.ps1 in the repo root
-pwsh -File .\scripts\package-release.ps1             # packages SOC-9000-starter.zip and SHA256SUMS.txt for releases
-```
+
 
 ### Smoke test
 
@@ -103,18 +100,9 @@ During the bring-up process you will still perform a short manual pfSense instal
 
 ### One‑click installation (end‑user path)
 
-For a frictionless setup, download a release from GitHub (look for `SOC-9000-installer.ps1`) or run the standalone installer script provided in this repo.  By default, the installer clones the repo into `E:\SOC-9000` and stores ISO downloads and build files in `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and launches the entire bring‑up:
+For a frictionless setup, download a release from GitHub (look for `scripts/setup-soc9000.ps1`) or run the standalone setup script provided in this repo.  By default, the installer clones the repo into `E:\SOC-9000` and stores ISO downloads and build files in `E:\SOC-9000-Pre-Install`.  It then updates configuration paths and launches the entire bring‑up:
 
-```powershell
-# from within the cloned repo, build the installer script
-pwsh -File .\scripts\build-installer.ps1
 
-# then run it (or distribute it to others)
-pwsh -File .\SOC-9000-installer.ps1
-
-# Alternatively, run the PowerShell installer template directly
-pwsh -File .\scripts\standalone-installer.ps1
-```
 
 The standalone installer is ideal for end users who do not wish to learn Git or manage multiple folders.  It avoids confusion by keeping the repository itself in `E:\SOC-9000` while placing ISO downloads and build artifacts under `E:\SOC-9000-Pre-Install` (or paths of your choice).  This separation means that you never mix the Git clone with downloaded assets.
 
