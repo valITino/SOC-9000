@@ -8,17 +8,59 @@
     state: present
     update_cache: true
 
-- name: Copy Nessus .deb from Windows mount (isos dir)
-  vars:
-    deb_name: "{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
+- name: Determine Nessus .deb name
+  set_fact:
+    nessus_deb: "{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
+
+- name: Fail if ISO_DIR_WSL not provided
+  fail:
+    msg: "ISO_DIR_WSL env not provided from host. Ensure scripts/nessus-vm-build-and-config.ps1 passes ISO_DIR_WSL."
+  when: lookup('env','ISO_DIR_WSL') | default('') | length == 0
+
+- name: Copy Nessus .deb from host ISO_DIR into VM
   ansible.builtin.copy:
-    src: "/mnt/e/SOC-9000/isos/{{ deb_name }}"
-    dest: "/tmp/{{ deb_name }}"
-    mode: '0644'
+    src: "{{ lookup('env','ISO_DIR_WSL') }}/{{ nessus_deb }}"
+    dest: "/tmp/{{ nessus_deb }}"
+    remote_src: no
+  become: yes
 
-- name: Install Nessus
+- name: Install Nessus .deb
   ansible.builtin.apt:
-    deb: "/tmp/{{ lookup('env', 'NESSUS_DEB') | default('nessus_latest_amd64.deb') }}"
+    deb: "/tmp/{{ nessus_deb }}"
     state: present
+  become: yes
 
-- import_tasks: register.yml
+- name: Enable & start nessusd
+  ansible.builtin.systemd:
+    name: nessusd
+    enabled: true
+    state: started
+  become: yes
+
+- name: Optional register with activation code (if provided)
+  when: lookup('env','NESSUS_ACTIVATION_CODE') | default('') | length > 0
+  ansible.builtin.command: /opt/nessus/sbin/nessuscli fetch --register {{ lookup('env','NESSUS_ACTIVATION_CODE') }}
+  register: nessus_vm_reg_out
+  changed_when: "'already registered' not in (nessus_vm_reg_out.stdout | lower)"
+  become: yes
+
+- name: Wait for Nessus web UI
+  ansible.builtin.uri:
+    url: https://127.0.0.1:8834
+    validate_certs: no
+    status_code: 200,302,401
+  register: nessus_ui
+  until: nessus_ui is succeeded
+  retries: 30
+  delay: 5
+
+- name: Optionally create admin user
+  when: (lookup('env','NESSUS_ADMIN_USER') | default('')) | length > 0 and (lookup('env','NESSUS_ADMIN_PASS') | default('')) | length > 0
+  ansible.builtin.shell: |
+    /opt/nessus/sbin/nessuscli adduser --login {{ lookup('env','NESSUS_ADMIN_USER') }} --password {{ lookup('env','NESSUS_ADMIN_PASS') }} --admin yes <<EOF
+    y
+    EOF
+  args:
+    executable: /bin/bash
+  changed_when: false
+  become: yes

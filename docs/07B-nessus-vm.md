@@ -4,9 +4,11 @@ Builds an Ubuntu 22.04 VM, installs Nessus from the `.deb`, and keeps data acros
 
 ## Prereqs
 - `E:\SOC-9000\isos\ubuntu-22.04.iso`
-- `E:\SOC-9000\isos\nessus_latest_amd64.deb`  (or adjust `NESSUS_DEB` in `.env`)
+- Place the Nessus `.deb` in `ISO_DIR` (defaults to `.\isos`) and ensure `NESSUS_DEB` matches the filename.
 
 ## Config
+Set `NESSUS_ACTIVATION_CODE` in `.env` (or you'll be prompted during `scripts\nessus-vm-build-and-config.ps1`).
+
 Update `.env` (defaults shown):
 
 NESSUS_VM_IP=172.22.20.60

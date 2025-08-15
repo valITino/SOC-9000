@@ -1,39 +1,18 @@
 <# 
 .SYNOPSIS
-  Declarative VMware VMnet configuration for Workstation Pro 17.x (Windows 11).
-  Generates a vnetlib import profile, imports it atomically, restarts services,
-  disables DHCP on host-only VMnets, and verifies adapters/IPs/services.
-
-.PARAMETER Vmnet8Subnet
-  NAT network address (default 192.168.37.0)
-
-.PARAMETER Vmnet8Mask
-  NAT netmask (default 255.255.255.0)
-
-.PARAMETER Vmnet8HostIp
-  Host adapter IP on VMnet8 (default 192.168.37.1)
-
-.PARAMETER Vmnet8Gw
-  NAT gateway (internalipaddr) (default 192.168.37.2)
-
-.PARAMETER Vmnet20Subnet..Vmnet23Subnet
-  Host-only /24 subnets; DHCP will be disabled on these.
-
-.PARAMETER HostOnlyMask
-  Netmask for host-only VMnets (default 255.255.255.0)
-
-.PARAMETER WhatIf
-  Show actions and generated import file without applying.
-
-.EXAMPLE
-  pwsh -File .\scripts\configure-vmnet.ps1 -Verbose
+  Declarative VMware VMnet configuration for Workstation Pro 17.x on Windows 11.
+.DESCRIPTION
+  Backs up the existing Virtual Network configuration, generates a vnetlib
+  import command file from desired parameters (or .env overrides), imports it
+  atomically via vnetlib64.exe, restarts NAT/DHCP, disables DHCP on host-only
+  VMnets (20–23), and verifies adapters/services.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
   [string]$Vmnet8Subnet   = "192.168.37.0",
   [string]$Vmnet8Mask     = "255.255.255.0",
   [string]$Vmnet8HostIp   = "192.168.37.1",
-  [string]$Vmnet8Gw       = "192.168.37.2",
+  [string]$Vmnet8Gateway  = "192.168.37.2",
   [string]$Vmnet20Subnet  = "172.22.10.0",
   [string]$Vmnet21Subnet  = "172.22.20.0",
   [string]$Vmnet22Subnet  = "172.22.30.0",
@@ -45,7 +24,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ------------------------------ Helpers ------------------------------
 function Ensure-Admin {
   $id  = [Security.Principal.WindowsIdentity]::GetCurrent()
   $pri = New-Object Security.Principal.WindowsPrincipal($id)
@@ -57,250 +35,187 @@ function Ensure-Admin {
   }
 }
 
-function Read-DotEnv {
-  param([string]$Path)
+function Read-DotEnv([string]$Path) {
   if (-not (Test-Path $Path)) { return @{} }
-  $map = @{}
-  Get-Content $Path | ForEach-Object {
+  $m=@{}; Get-Content $Path | ForEach-Object {
     if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
     $k,$v = $_ -split '=',2
-    if ($v -ne $null) { $map[$k.Trim()] = $v.Trim() }
-  }
-  $map
+    if ($v -ne $null){ $m[$k.Trim()]=$v.Trim() }
+  }; $m
 }
 
 function Find-VNetLib {
-  $cands = @(
+  foreach($p in @(
     "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe",
     "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe"
-  )
-  foreach($p in $cands){ if (Test-Path $p) { return $p } }
+  )){ if(Test-Path $p){ return $p } }
   $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
   if ($cmd) { return $cmd.Source }
   throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+ (Virtual Network Editor) and re-run."
 }
 
-function Invoke-VMnet {
-  param([string[]]$Args)
+function Invoke-VMnet([string[]]$Args) {
   Write-Verbose ("vnetlib64 -- " + ($Args -join ' '))
   & $script:VNetLib -- @Args
-  if ($LASTEXITCODE -ne 0) {
-    throw "vnetlib failed (exit $LASTEXITCODE) for: $($Args -join ' ')"
-  }
+  if ($LASTEXITCODE -ne 0) { throw "vnetlib failed ($LASTEXITCODE): $($Args -join ' ')" }
 }
 
-function Export-VMnetProfile {
-  param([Parameter(Mandatory)] [string]$Path)
-  Invoke-VMnet @("export", $Path)
-}
+function HostOnlyIP([string]$Subnet) { $o = $Subnet -split '\.'; "$($o[0]).$($o[1]).$($o[2]).1" }
 
-function Get-NetworkOctets {
-  param([Parameter(Mandatory)][string]$Subnet) # e.g., 192.168.37.0
-  $o = $Subnet -split '\.'
-  if ($o.Count -ne 4) { throw "Invalid subnet: $Subnet" }
-  return @{A=$o[0];B=$o[1];C=$o[2];D=$o[3]}
-}
-
-function Get-HostOnlyHostIP {
-  param([Parameter(Mandatory)][string]$Subnet) # returns .1
-  $o = Get-NetworkOctets -Subnet $Subnet
-  "${($o.A)}.${($o.B)}.${($o.C)}.1"
-}
-
-function Get-DhcpRangeFor24 {
-  param([Parameter(Mandatory)][string]$Subnet) # *.128 - *.254
-  $o = Get-NetworkOctets -Subnet $Subnet
-  $start = "${($o.A)}.${($o.B)}.${($o.C)}.128"
-  $end   = "${($o.A)}.${($o.B)}.${($o.C)}.254"
-  return @{Start=$start; End=$end}
-}
-
-function New-VMnetImportText {
+function Build-ImportCommands {
   param(
-    [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,[string]$Vmnet8Gw,
+    [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,[string]$Vmnet8Gateway,
     [string]$Vmnet20Subnet,[string]$Vmnet21Subnet,[string]$Vmnet22Subnet,[string]$Vmnet23Subnet,[string]$HostOnlyMask
   )
-  # Build a vnetlib "command file" that import understands (one command per line).
-  $lines = New-Object System.Collections.Generic.List[string]
+  $L = New-Object System.Collections.Generic.List[string]
 
-  # --- VMnet8 (NAT + DHCP) ---
-  $dhcp = Get-DhcpRangeFor24 -Subnet $Vmnet8Subnet
-  $lines.Add("add vnet vmnet8")
-  $lines.Add("set vnet vmnet8 addr $Vmnet8Subnet")
-  $lines.Add("set vnet vmnet8 mask $Vmnet8Mask")
-  $lines.Add("set adapter vmnet8 addr $Vmnet8HostIp")
-  $lines.Add("set nat vmnet8 internalipaddr $Vmnet8Gw")
-  $lines.Add("update adapter vmnet8")
-  $lines.Add("update nat vmnet8")
-  # DHCP ON for vmnet8
-  $lines.Add("update dhcp vmnet8")
+  # VMnet8 NAT
+  $L.Add("add vnet vmnet8")
+  $L.Add("set vnet vmnet8 addr $Vmnet8Subnet")
+  $L.Add("set vnet vmnet8 mask $Vmnet8Mask")
+  $L.Add("set adapter vmnet8 addr $Vmnet8HostIp")
+  $L.Add("set nat vmnet8 internalipaddr $Vmnet8Gateway")
+  $L.Add("update adapter vmnet8")
+  $L.Add("update nat vmnet8")
+  $L.Add("update dhcp vmnet8")   # enable DHCP for NAT network
 
-  # --- Host-only nets (DHCP OFF) ---
-  foreach ($pair in @(
-    @{n=20; s=$Vmnet20Subnet},
-    @{n=21; s=$Vmnet21Subnet},
-    @{n=22; s=$Vmnet22Subnet},
-    @{n=23; s=$Vmnet23Subnet}
+  foreach($def in @(
+    @{n=20;s=$Vmnet20Subnet},
+    @{n=21;s=$Vmnet21Subnet},
+    @{n=22;s=$Vmnet22Subnet},
+    @{n=23;s=$Vmnet23Subnet}
   )){
-    $hn = "vmnet{0}" -f $pair.n
-    $hip = Get-HostOnlyHostIP -Subnet $pair.s
-    $lines.Add("add vnet $hn")
-    $lines.Add("set vnet $hn addr $($pair.s)")
-    $lines.Add("set vnet $hn mask $HostOnlyMask")
-    $lines.Add("set adapter $hn addr $hip")
-    $lines.Add("update adapter $hn")
-    # NOTE: we purposely do NOT 'update dhcp' for host-only nets to keep DHCP off.
+    $hn = "vmnet$($def.n)"
+    $hip = HostOnlyIP $def.s
+    $L.Add("add vnet $hn")
+    $L.Add("set vnet $hn addr $($def.s)")
+    $L.Add("set vnet $hn mask $HostOnlyMask")
+    $L.Add("set adapter $hn addr $hip")
+    $L.Add("update adapter $hn")
+    # do NOT 'update dhcp' to keep DHCP OFF on host-only nets
   }
-
-  # Return as a single string
-  return ($lines -join "`r`n") + "`r`n"
+  ($L -join "`r`n") + "`r`n"
 }
 
-function Restart-VMwareServices {
-  $svcs = @("VMware NAT Service","VMnetDHCP")
-  foreach($s in $svcs){
-    $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
-    if (-not $svc) { throw "Required service '$s' not found. Repair VMware Workstation install." }
-    if ($svc.StartType -eq 'Disabled') {
-      Set-Service -Name $s -StartupType Automatic
-    }
+function Prune-HostOnlyDhcp([string[]]$Subnets,[string]$Mask){
+  $dhcp = "C:\ProgramData\VMware\vmnetdhcp.conf"
+  if (-not (Test-Path $dhcp)) { return }
+  $raw = Get-Content $dhcp -Raw
+  foreach($s in $Subnets){
+    $pat = "subnet\s+$([regex]::Escape($s))\s+netmask\s+$([regex]::Escape($Mask))\s*\{[^}]*\}"
+    $raw = [regex]::Replace($raw,$pat,"","Singleline,IgnoreCase")
   }
-  foreach($s in $svcs){
-    Try { Start-Service -Name $s -ErrorAction SilentlyContinue } Catch {}
-  }
-  Start-Sleep -Seconds 2
+  Set-Content -Path $dhcp -Value $raw -Encoding ASCII
 }
 
-function Remove-DHCP-ForSubnets {
-  # Remove subnet blocks for our host-only networks from vmnetdhcp.conf
-  param([string[]]$Subnets)
-  $dhcpPath = "C:\ProgramData\VMware\vmnetdhcp.conf"
-  if (-not (Test-Path $dhcpPath)) { return }
-  $content = Get-Content $dhcpPath -Raw
-  foreach($sub in $Subnets){
-    $mask = $HostOnlyMask
-    $pattern = "subnet\s+$([regex]::Escape($sub))\s+netmask\s+$([regex]::Escape($mask))\s*\{[^}]*\}"
-    $content = [regex]::Replace($content, $pattern, "", "IgnoreCase, Singleline")
-  }
-  Set-Content -Path $dhcpPath -Value $content -Encoding ASCII
+function Test-SvcsOk { 
+  $n = Get-Service "VMware NAT Service" -ErrorAction SilentlyContinue
+  $d = Get-Service "VMnetDHCP" -ErrorAction SilentlyContinue
+  if (-not $n -or -not $d){ return $false }
+  return ($n.Status -eq 'Running' -and $d.Status -eq 'Running')
 }
 
-function Test-AdaptersAndIPs {
+function Verify-State {
   param(
-    [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,[string]$Vmnet8Gw,
+    [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,[string]$Vmnet8Gateway,
     [string]$Vmnet20Subnet,[string]$Vmnet21Subnet,[string]$Vmnet22Subnet,[string]$Vmnet23Subnet,[string]$HostOnlyMask
   )
-  $results = @()
-
-  function _one {
-    param($vmnet,$type,$subnet,$mask,$expectDhcp)
-    $alias = "VMware Network Adapter $vmnet"
-    $row = [ordered]@{
-      VMnet=$vmnet; Type=$type; Subnet=$subnet; Mask=$mask; DHCP= $(if($expectDhcp){"ON"}else{"OFF"})
-      HostIP=$null; AdapterUp=$false; ServicesOK=$false; Note=""
-    }
+  $rows=@()
+  foreach($row in @(
+    @{V="VMnet8";  T="NAT";      S=$Vmnet8Subnet;  M=$Vmnet8Mask},
+    @{V="VMnet20"; T="HostOnly"; S=$Vmnet20Subnet; M=$HostOnlyMask},
+    @{V="VMnet21"; T="HostOnly"; S=$Vmnet21Subnet; M=$HostOnlyMask},
+    @{V="VMnet22"; T="HostOnly"; S=$Vmnet22Subnet; M=$HostOnlyMask},
+    @{V="VMnet23"; T="HostOnly"; S=$Vmnet23Subnet; M=$HostOnlyMask}
+  )){
+    $alias = "VMware Network Adapter $($row.V)"
     $ad = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
-    if ($ad -and $ad.Status -eq 'Up') { $row['AdapterUp'] = $true }
-    $ipcfg = Get-NetIPConfiguration -InterfaceAlias $alias -ErrorAction SilentlyContinue
-    if ($ipcfg -and $ipcfg.IPv4Address){
-      $row['HostIP'] = ($ipcfg.IPv4Address | Select-Object -First 1).IPAddress
-      # Very lightweight mask check (prefixlength→netmask conversion omitted for brevity)
+    $ip = (Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+    $rows += [pscustomobject]@{
+      VMnet=$row.V; Type=$row.T; Subnet=$row.S; Mask=$row.M;
+      AdapterUp = ($ad -and $ad.Status -eq 'Up');
+      HostIP = $ip;
+      ServicesOK = (Test-SvcsOk)
     }
-    $natSvc = Get-Service "VMware NAT Service" -ErrorAction SilentlyContinue
-    $dhcpSvc= Get-Service "VMnetDHCP" -ErrorAction SilentlyContinue
-    $row['ServicesOK'] = ($natSvc.Status -eq 'Running' -and $dhcpSvc.Status -eq 'Running')
-    [pscustomobject]$row
   }
-
-  $results += _one "VMnet8"  "NAT"      $Vmnet8Subnet  $Vmnet8Mask $true
-  $results += _one "VMnet20" "HostOnly" $Vmnet20Subnet $HostOnlyMask $false
-  $results += _one "VMnet21" "HostOnly" $Vmnet21Subnet $HostOnlyMask $false
-  $results += _one "VMnet22" "HostOnly" $Vmnet22Subnet $HostOnlyMask $false
-  $results += _one "VMnet23" "HostOnly" $Vmnet23Subnet $HostOnlyMask $false
-
-  return ,$results
+  $rows
 }
 
-function Write-Summary {
-  param([object[]]$Rows,[string]$ImportFile,[string]$BackupFile)
-  Write-Host ""
-  Write-Host "================== VMware VMnet Summary ==================" -ForegroundColor White
-  "{0,-8} {1,-9} {2,-16} {3,-15} {4,-5} {5,-15} {6,-10}" -f "VMnet","Type","Subnet","Mask","DHCP","HostIP","Services" | Write-Host
-  $fail = $false
+function Print-Summary([object[]]$Rows,[string]$BackupFile,[string]$ImportFile){
+  Write-Host "`n================== VMware VMnet Summary ==================" -ForegroundColor White
+  "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-8}" -f "VMnet","Type","Subnet","Mask","HostIP","Services" | Write-Host
+  $bad=$false
   foreach($r in $Rows){
     $svc = if($r.ServicesOK){"OK"}else{"FAIL"}
-    $line = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-5} {5,-15} {6,-10}" -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,$r.DHCP,($r.HostIP ?? "-"),$svc
-    if ($r.AdapterUp -and $r.ServicesOK) { Write-Host $line -ForegroundColor Green } else { Write-Host $line -ForegroundColor Yellow; $fail=$true }
+    $line = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-8}" -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,($r.HostIP ?? "-"),$svc
+    if($r.AdapterUp -and $r.ServicesOK){ Write-Host $line -ForegroundColor Green } else { Write-Host $line -ForegroundColor Yellow; $bad=$true }
   }
   Write-Host "Backup file : $BackupFile"
-  if ($ImportFile) { Write-Host "Import file : $ImportFile" }
+  Write-Host "Import file : $ImportFile"
   Write-Host "==========================================================" -ForegroundColor White
-  if ($fail) {
-    Write-Error "One or more checks failed. Open Services.msc to ensure 'VMware NAT Service' and 'VMnetDHCP' are Running; then re-run this script."
-    exit 1
-  }
+  if ($bad){ throw "One or more checks failed. Ensure 'VMware NAT Service' and 'VMnetDHCP' are Running and adapters are Up, then re-run." }
 }
 
-# ------------------------------ Main ------------------------------
+# ------------------------ Main ------------------------
 Ensure-Admin
 
-$logDir = Join-Path (Split-Path -Parent $PSCommandPath) "..\logs"
+$root = Split-Path -Parent $PSCommandPath
+$logDir = Join-Path $root "..\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-try { Stop-Transcript | Out-Null } catch {}
+try{ Stop-Transcript | Out-Null }catch{}
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"
 $log = Join-Path $logDir "configure-vmnet-$ts.log"
 Start-Transcript -Path $log -Force | Out-Null
 
 # .env overrides
-$envMap = Read-DotEnv -Path (Join-Path (Split-Path -Parent $PSCommandPath) "..\.env")
-if ($envMap.Count -gt 0) {
-  $Vmnet8Subnet   = $envMap.VMNET8_SUBNET   ?? $Vmnet8Subnet
-  $Vmnet8Mask     = $envMap.VMNET8_MASK     ?? $Vmnet8Mask
-  $Vmnet8HostIp   = $envMap.VMNET8_HOSTIP   ?? $Vmnet8HostIp
-  $Vmnet8Gw       = $envMap.VMNET8_GATEWAY  ?? $Vmnet8Gw
-  $Vmnet20Subnet  = $envMap.VMNET20_SUBNET  ?? $Vmnet20Subnet
-  $Vmnet21Subnet  = $envMap.VMNET21_SUBNET  ?? $Vmnet21Subnet
-  $Vmnet22Subnet  = $envMap.VMNET22_SUBNET  ?? $Vmnet22Subnet
-  $Vmnet23Subnet  = $envMap.VMNET23_SUBNET  ?? $Vmnet23Subnet
-  $HostOnlyMask   = $envMap.HOSTONLY_MASK   ?? $HostOnlyMask
-}
+$envMap = Read-DotEnv (Join-Path $root "..\.env")
+$Vmnet8Subnet  = $envMap.VMNET8_SUBNET  ?? $Vmnet8Subnet
+$Vmnet8Mask    = $envMap.VMNET8_MASK    ?? $Vmnet8Mask
+$Vmnet8HostIp  = $envMap.VMNET8_HOSTIP  ?? $Vmnet8HostIp
+$Vmnet8Gateway = $envMap.VMNET8_GATEWAY ?? $Vmnet8Gateway
+$Vmnet20Subnet = $envMap.VMNET20_SUBNET ?? $Vmnet20Subnet
+$Vmnet21Subnet = $envMap.VMNET21_SUBNET ?? $Vmnet21Subnet
+$Vmnet22Subnet = $envMap.VMNET22_SUBNET ?? $Vmnet22Subnet
+$Vmnet23Subnet = $envMap.VMNET23_SUBNET ?? $Vmnet23Subnet
+$HostOnlyMask  = $envMap.HOSTONLY_MASK  ?? $HostOnlyMask
 
 $script:VNetLib = Find-VNetLib
 
-# Backup current profile
+# Backup
 $backup = Join-Path $logDir "vmnet-backup-$ts.txt"
-Export-VMnetProfile -Path $backup
+Invoke-VMnet @("export",$backup)
 
-# Generate import file (list of vnetlib commands)
-$importText = New-VMnetImportText -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gw $Vmnet8Gw \
+# Build import command file
+$importText = Build-ImportCommands -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gateway $Vmnet8Gateway \
   -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
-$importFile = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
-Set-Content -Path $importFile -Value $importText -Encoding ASCII
+$import = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
+Set-Content -Path $import -Value $importText -Encoding ASCII
 
 if ($WhatIf) {
-  Write-Host "`n[WhatIf] vnetlib import commands that would be applied:" -ForegroundColor Cyan
+  Write-Host "`n[WhatIf] vnetlib import commands:" -ForegroundColor Cyan
   Write-Host $importText
-  $rows = Test-AdaptersAndIPs -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gw $Vmnet8Gw \
-    -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
-  Write-Summary -Rows $rows -ImportFile $importFile -BackupFile $backup
   Stop-Transcript | Out-Null
   exit 0
 }
 
-# Stop services → import → start services
+# Stop → import → start
 Invoke-VMnet @("stop","dhcp")
 Invoke-VMnet @("stop","nat")
-Invoke-VMnet @("import", $importFile)
+Invoke-VMnet @("import",$import)
 Invoke-VMnet @("start","dhcp")
 Invoke-VMnet @("start","nat")
 
-# Ensure VMware services are up and DHCP OFF on host-only nets
-Restart-VMwareServices
-Remove-DHCP-ForSubnets -Subnets @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)
-Restart-VMwareServices
+# Ensure services started and DHCP pruned for host-only nets
+foreach($s in @("VMware NAT Service","VMnetDHCP")){
+  $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+  if ($svc -and $svc.StartType -eq 'Disabled'){ Set-Service -Name $s -StartupType Automatic }
+  Try{ Start-Service -Name $s -ErrorAction SilentlyContinue }Catch{}
+}
+Prune-HostOnlyDhcp @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
+Try{ Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue }Catch{}
 
-# Final verification
-$rows = Test-AdaptersAndIPs -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gw $Vmnet8Gw \
+# Verify
+$rows = Verify-State -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gateway $Vmnet8Gateway \
   -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
-Write-Summary -Rows $rows -ImportFile $importFile -BackupFile $backup
+Print-Summary -Rows $rows -BackupFile $backup -ImportFile $import
 Stop-Transcript | Out-Null

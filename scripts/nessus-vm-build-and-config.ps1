@@ -13,26 +13,16 @@ function Read-DotEnv {
   $map
 }
 
-function To-WSLPath([string]$win){ $win -replace '^([A-Za-z]):','/mnt/$1' -replace '\\','/' }
-
-$repoRoot = Split-Path -Parent $PSCommandPath
-$envMap = Read-DotEnv -Path (Join-Path $repoRoot "..\.env")
-
-# Get activation code from .env or secure prompt
-$act = $envMap.NESSUS_ACTIVATION_CODE
-if (-not $act -or $act -eq "") {
-  Write-Host "Enter your Nessus activation code (input hidden):"
-  $act = Read-Host -AsSecureString | ForEach-Object { (New-Object System.Net.NetworkCredential("u",$_)).Password }
+function To-WSLPath([string]$win){
+  if ($win -match '^([A-Za-z]):\\'){ "/mnt/$([string]$matches[1]).ToLower()/{0}" -f ($win.Substring(3) -replace '\\','/') } else { $win }
 }
 
-# Optional admin user/pass for nessuscli adduser
-$adminUser = $envMap.NESSUS_ADMIN_USER
-$adminPass = $envMap.NESSUS_ADMIN_PASS
+$repo = Split-Path -Parent $PSCommandPath
+$envMap = Read-DotEnv -Path (Join-Path $repo "..\.env")
 
+# Required .env entries
 $required = 'ARTIFACTS_DIR','VMNET_SOC','PFSENSE_SOC_IP','NESSUS_VM_IP','NESSUS_VM_CPUS','NESSUS_VM_RAM_MB'
 foreach($r in $required){ if(-not $envMap[$r]){ throw ".env missing $r" } }
-
-function K { param([Parameter(ValueFromRemainingArguments)]$args) kubectl @args }
 
 # Build with Packer
 pushd packer\nessus-vm
@@ -47,15 +37,30 @@ $vmrun = @("C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe","C:\Prog
 if (-not $vmrun) { throw "vmrun not found" }
 & $vmrun -T ws start $vmx nogui | Out-Null
 
-# Run Ansible role from WSL with activation vars
-$repo = Resolve-Path "$PSScriptRoot/.."
-$wslRepo = To-WSLPath $repo
-$inv = "$wslRepo/ansible/inventory.ini"
-$play= "$wslRepo/ansible/site-nessus.yml"
-$cmd = "NESSUS_ACTIVATION_CODE='$act' NESSUS_ADMIN_USER='$adminUser' NESSUS_ADMIN_PASS='$adminPass' ansible-playbook -i '$inv' '$play'"
+# Run Ansible role from WSL with activation vars and ISO path
+$isoDirWin = $envMap.ISO_DIR
+if (-not $isoDirWin){ $isoDirWin = Join-Path $repo "..\isos" }
+$isoDirWsl = To-WSLPath $isoDirWin
+
+$wslRepo = To-WSLPath (Join-Path $repo ".." )
+$inv  = "$wslRepo/ansible/inventory.ini"
+$play = "$wslRepo/ansible/site-nessus.yml"
+
+$act = $envMap.NESSUS_ACTIVATION_CODE
+if (-not $act -or $act -eq ""){
+  Write-Host "Enter your Nessus activation code (input hidden):"
+  $act = Read-Host -AsSecureString | ForEach-Object { (New-Object System.Net.NetworkCredential("u",$_)).Password }
+}
+
+$env:NESSUS_ACTIVATION_CODE = $act
+$env:NESSUS_ADMIN_USER = $envMap.NESSUS_ADMIN_USER
+$env:NESSUS_ADMIN_PASS = $envMap.NESSUS_ADMIN_PASS
+$env:ISO_DIR_WSL = $isoDirWsl
+
+$cmd = "ISO_DIR_WSL='$env:ISO_DIR_WSL' NESSUS_ACTIVATION_CODE='$env:NESSUS_ACTIVATION_CODE' NESSUS_ADMIN_USER='$env:NESSUS_ADMIN_USER' NESSUS_ADMIN_PASS='$env:NESSUS_ADMIN_PASS' ansible-playbook -i '$inv' '$play'"
 Write-Host "Running Nessus VM Ansible playbook..." -ForegroundColor Cyan
 wsl bash -lc "$cmd"
-if ($LASTEXITCODE -ne 0) { throw "Nessus VM configuration failed." }
+if ($LASTEXITCODE -ne 0){ throw "Nessus VM configuration failed." }
 
 # Clear sensitive env
 $env:NESSUS_ACTIVATION_CODE = $null
