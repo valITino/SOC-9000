@@ -94,12 +94,32 @@ $lines += @(
     "update dhcp vmnet8",
     ""
 )
-foreach($def in @(
-    @{n=20;s=$Vmnet20Subnet},
-    @{n=21;s=$Vmnet21Subnet},
-    @{n=22;s=$Vmnet22Subnet},
-    @{n=23;s=$Vmnet23Subnet}
-)){
+# Read preferred host-only IDs (default to 9-12)
+$hostOnlyIds = @()
+if ($EnvMap.ContainsKey('HOSTONLY_VMNET_IDS') -and $EnvMap['HOSTONLY_VMNET_IDS']) {
+    $hostOnlyIds = $EnvMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) }
+} else {
+    $hostOnlyIds = 9,10,11,12
+}
+
+$hostOnlySubnets = @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)
+
+for ($i=0; $i -lt $hostOnlySubnets.Count; $i++) {
+    $id  = $hostOnlyIds[$i]
+    $s   = $hostOnlySubnets[$i]
+    $hip = Get-HostOnlyGatewayIp $s
+    $hn  = "vmnet$($id)"
+    $lines += @(
+        "add adapter $hn",
+        "add vnet $hn",
+        "set vnet $hn addr $s",
+        "set vnet $hn mask $HostOnlyMask",
+        "set adapter $hn addr $hip",
+        "update adapter $hn",
+        ""
+    )
+}
+{
     $hn  = "vmnet$($def.n)"
     $hip = Get-HostOnlyGatewayIp $def.s
     $lines += @(

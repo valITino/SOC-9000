@@ -180,10 +180,10 @@ if ($ManualNetwork) {
     # 2) Normalize configure-vmnet.ps1 (guard against encoding/line ending issues)
     $cfgPath = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
     Convert-FileToAsciiCrLf $cfgPath
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath -NoTranscript
 
     # 3) Run the full configure/import which also forces adapter IPs
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath -NoTranscript
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE). Aborting."
         Stop-Transcript | Out-Null
