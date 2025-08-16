@@ -162,9 +162,16 @@ if ($ManualNetwork) {
         if (-not $vnetlib) { throw "vnetlib64.exe not found" }
 
         Write-Host "Importing..."
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','dhcp') -Wait -PassThru;  if ($p.ExitCode -ne 0) { throw "stop dhcp failed: $($p.ExitCode)" }
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','nat')  -Wait -PassThru;  if ($p.ExitCode -ne 0) { throw "stop nat failed: $($p.ExitCode)" }
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','import',"$profilePath") -Wait -PassThru; if ($p.ExitCode -ne 0) { throw "import failed: $($p.ExitCode)" }
+        # tolerate '1' on stop (nothing to stop)
+        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','dhcp') -Wait -PassThru
+        if ($p.ExitCode -notin 0,1) { throw "stop dhcp failed: $($p.ExitCode)" }
+
+        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','nat') -Wait -PassThru
+        if ($p.ExitCode -notin 0,1) { throw "stop nat failed: $($p.ExitCode)" }
+
+        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','import',"$profilePath") -Wait -PassThru
+        if ($p.ExitCode -ne 0) { throw "import failed: $($p.ExitCode)" }
+
         [void](Start-Process -FilePath $vnetlib -ArgumentList @('--','start','dhcp') -Wait -PassThru)
         [void](Start-Process -FilePath $vnetlib -ArgumentList @('--','start','nat')  -Wait -PassThru)
 

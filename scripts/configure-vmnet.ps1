@@ -84,7 +84,8 @@ function Get-VNetLibPath {
 
 function Invoke-VMnet([string[]]$CliArgs) {
     Write-Verbose ("vnetlib64 -- " + ($CliArgs -join ' '))
-    $p = Start-Process -FilePath $script:VNetLib -ArgumentList @('--') + $CliArgs -Wait -PassThru
+    # IMPORTANT: wrap the + expression so PowerShell treats it as one argument value
+    $p = Start-Process -FilePath $script:VNetLib -ArgumentList (@('--') + $CliArgs) -Wait -PassThru
     if ($p.ExitCode -ne 0) { throw "vnetlib failed ($($p.ExitCode)): $($CliArgs -join ' ')" }
 }
 
@@ -256,12 +257,18 @@ if (-not $PSCmdlet.ShouldProcess("VMware VMnet configuration","Apply import comm
     exit 0
 }
 
-# stop → import → start via ExitCode
-$p = Start-Process -FilePath $script:VNetLib -ArgumentList '--','stop','dhcp' -Wait -PassThru; if ($p.ExitCode -ne 0) { throw "stop dhcp failed: $($p.ExitCode)" }
-$p = Start-Process -FilePath $script:VNetLib -ArgumentList '--','stop','nat'  -Wait -PassThru; if ($p.ExitCode -ne 0) { throw "stop nat failed: $($p.ExitCode)" }
-$p = Start-Process -FilePath $script:VNetLib -ArgumentList '--','import',"$import" -Wait -PassThru; if ($p.ExitCode -ne 0) { throw "import failed: $($p.ExitCode)" }
-[void](Start-Process -FilePath $script:VNetLib -ArgumentList '--','start','dhcp' -Wait -PassThru)
-[void](Start-Process -FilePath $script:VNetLib -ArgumentList '--','start','nat'  -Wait -PassThru)
+# stop → import → start  (tolerate '1' on stop = "nothing to stop")
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList @('--','stop','dhcp') -Wait -PassThru
+if ($p.ExitCode -notin 0,1) { throw "stop dhcp failed: $($p.ExitCode)" }
+
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList @('--','stop','nat') -Wait -PassThru
+if ($p.ExitCode -notin 0,1) { throw "stop nat failed: $($p.ExitCode)" }
+
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList @('--','import',"$import") -Wait -PassThru
+if ($p.ExitCode -ne 0) { throw "import failed: $($p.ExitCode)" }
+
+[void](Start-Process -FilePath $script:VNetLib -ArgumentList @('--','start','dhcp') -Wait -PassThru)
+[void](Start-Process -FilePath $script:VNetLib -ArgumentList @('--','start','nat')  -Wait -PassThru)
 
 # prune DHCP for host-only nets
 Remove-HostOnlyDhcpScopes @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
