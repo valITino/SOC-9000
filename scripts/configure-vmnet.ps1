@@ -5,7 +5,7 @@
 .DESCRIPTION
   Builds a vnetlib64 import profile that CREATES adapters, stops services,
   imports the profile, restarts services, prunes host-only DHCP scopes,
-  verifies adapters/IPs/services, and prints a summary.
+  forces adapter IPv4 addresses, verifies adapters/IPs/services, and prints a summary.
   ASCII-only; PS 5.1 and 7+ compatible.
 #>
 
@@ -52,12 +52,11 @@ function Get-DotEnvMap([string]$Path) {
     }
     return $m
 }
-
 function Set-ValueFromEnv([hashtable]$Map,[string]$Key,[ref]$Target) {
     if ($Map.ContainsKey($Key) -and $Map[$Key]) { $Target.Value = $Map[$Key] }
 }
-
 function Test-ConditionOrThrow($Cond,[string]$Message){ if (-not $Cond) { throw $Message } }
+
 function Test-IPv4Address([string]$Ip){
     if ($Ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return $false }
     foreach($oct in $Ip -split '\.'){ if([int]$oct -gt 255){ return $false } }
@@ -87,7 +86,6 @@ function Get-VNetLibPath {
     if ($cmd) { return $cmd.Source }
     throw "vnetlib64.exe not found. Install VMware Workstation Pro (with Virtual Network Editor)."
 }
-
 function Invoke-VMnet {
     [CmdletBinding()]
     param(
@@ -106,7 +104,6 @@ function New-ImportText {
         [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,[string]$Vmnet8Gateway,
         [string]$Vmnet20Subnet,[string]$Vmnet21Subnet,[string]$Vmnet22Subnet,[string]$Vmnet23Subnet,[string]$HostOnlyMask
     )
-
     $lines = @()
 
     # vmnet8: NAT + DHCP (create then update)
@@ -160,7 +157,6 @@ function Test-ServiceStateOk {
     $d = Get-Service "VMnetDHCP" -ErrorAction SilentlyContinue
     return ($n -and $d -and $n.Status -eq 'Running' -and $d.Status -eq 'Running')
 }
-
 function Start-VMwareNetworkServices {
     $pairs = @(
         @('VMnetNatSvc','VMware NAT Service'),
@@ -173,6 +169,49 @@ function Start-VMwareNetworkServices {
             try { Start-Service $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
         }
     }
+}
+
+function Convert-MaskToPrefixLength([string]$Mask){
+    $bytes=[Net.IPAddress]::Parse($Mask).GetAddressBytes()
+    $bits = ($bytes | ForEach-Object { [Convert]::ToString($_,2).PadLeft(8,'0') }) -join ''
+    ($bits.ToCharArray() | Where-Object { $_ -eq '1' }).Count
+}
+function Set-AdapterIPv4 {
+    [CmdletBinding()]
+    param([string]$Alias,[string]$IpAddress,[string]$Mask)
+
+    $ad = Get-NetAdapter -Name $Alias -ErrorAction SilentlyContinue
+    if (-not $ad) { return }
+
+    $prefix = Convert-MaskToPrefixLength $Mask
+
+    $has = Get-NetIPAddress -InterfaceAlias $Alias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -eq $IpAddress }
+    if ($has) { return }
+
+    # remove existing v4s (including APIPA) and apply static
+    Get-NetIPAddress -InterfaceAlias $Alias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            ForEach-Object { try { Remove-NetIPAddress -InterfaceAlias $Alias -IPAddress $_.IPAddress -Confirm:$false -ErrorAction SilentlyContinue } catch {} }
+
+    if ($ad.Status -ne 'Up') {
+        try { Enable-NetAdapter -Name $Alias -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+    }
+
+    try {
+        New-NetIPAddress -InterfaceAlias $Alias -IPAddress $IpAddress -PrefixLength $prefix -ErrorAction Stop | Out-Null
+    } catch {
+        # fallback to netsh if needed
+        & netsh interface ip set address name="$Alias" static $IpAddress $Mask
+    }
+}
+function Wait-AdapterUp([string]$Alias,[int]$Seconds = 10){
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    do {
+        $ad = Get-NetAdapter -Name $Alias -ErrorAction SilentlyContinue
+        if ($ad -and $ad.Status -eq 'Up') { return $true }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return $false
 }
 
 function Test-VmnetState {
@@ -211,40 +250,24 @@ return $rows
 }
 
 function Write-VmnetSummary {
-param(
-[object[]]$Rows,
-[string]$BackupFile,
-[string]$ImportFile
-)
-
+param([object[]]$Rows,[string]$BackupFile,[string]$ImportFile)
 Write-Host ""
 Write-Host "================== VMware VMnet Summary ==================" -ForegroundColor White
-
 $headerFmt = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-15} {6,-8}"
 $lineFmt   = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-15} {6,-8}"
-
-$hdr = $headerFmt -f "VMnet","Type","Subnet","Mask","ExpectedIP","ActualIP","Services"
-Write-Host $hdr
-
+Write-Host ($headerFmt -f "VMnet","Type","Subnet","Mask","ExpectedIP","ActualIP","Services")
 $bad = $false
-
 foreach($r in $Rows){
 $svc    = if ($r.ServicesOK) { "OK" } else { "FAIL" }
 $okLine = ($r.AdapterUp -and $r.ServicesOK -and ($r.ExpectedIP -eq $r.ActualIP))
 $actual = if ($r.ActualIP) { $r.ActualIP } else { "-" }
 $line   = $lineFmt -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,$r.ExpectedIP,$actual,$svc
-
-if ($okLine) { Write-Host $line -ForegroundColor Green }
-else { Write-Host $line -ForegroundColor Yellow; $bad = $true }
+if ($okLine) { Write-Host $line -ForegroundColor Green } else { Write-Host $line -ForegroundColor Yellow; $bad = $true }
 }
-
 Write-Host "Backup file : $BackupFile"
 Write-Host "Import file : $ImportFile"
 Write-Host "==========================================================" -ForegroundColor White
-
-if ($bad) {
-throw "One or more checks failed. Validate .env IPs/masks; ensure 'VMware NAT Service' and 'VMnetDHCP' are Running; then re-run."
-}
+if ($bad) { throw "One or more checks failed. Validate .env IPs/masks; ensure 'VMware NAT Service' and 'VMnetDHCP' are Running; then re-run." }
 }
 
 # ---------- main ----------
@@ -302,7 +325,7 @@ exit 0
 $importFile = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
 Set-Content -Path $importFile -Value $importText -Encoding ASCII
 
-# Backup current profile (warn-only if it fails)
+# Backup profile (warn only)
 $backup = Join-Path $LogDir "vmnet-backup-$ts.txt"
 try { Invoke-VMnet -CliArgs @('export',$backup) -AllowedExitCodes @(0,1) } catch { Write-Warning "Backup export failed: $($_.Exception.Message)" }
 
@@ -315,6 +338,21 @@ Invoke-VMnet -CliArgs @('start','nat')          -AllowedExitCodes @(0,1)
 
 # Start services
 Start-VMwareNetworkServices
+
+# Force adapter IPs (handles APIPA cases after import)
+Set-AdapterIPv4 -Alias "VMware Network Adapter VMnet8" -IpAddress $Vmnet8HostIp -Mask $Vmnet8Mask
+foreach ($item in @(
+@{Alias="VMware Network Adapter VMnet20"; Subnet=$Vmnet20Subnet},
+@{Alias="VMware Network Adapter VMnet21"; Subnet=$Vmnet21Subnet},
+@{Alias="VMware Network Adapter VMnet22"; Subnet=$Vmnet22Subnet},
+@{Alias="VMware Network Adapter VMnet23"; Subnet=$Vmnet23Subnet}
+)) {
+$hip = Get-HostOnlyGatewayIp $item.Subnet
+Set-AdapterIPv4 -Alias $item.Alias -IpAddress $hip -Mask $HostOnlyMask
+}
+
+# Give Windows a moment to settle links
+Wait-AdapterUp "VMware Network Adapter VMnet8" 10 | Out-Null
 
 # Prune DHCP scopes for host-only nets then bounce DHCP service
 Remove-HostOnlyDhcpScopes @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
