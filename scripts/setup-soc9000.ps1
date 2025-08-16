@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$ManualNetwork,
-    [string]$ArtifactsDir,   # backward-compat: treated as CONFIG_NETWORK_DIR
+    [switch]$ManualNetwork,      # forces manual editor immediately
+    [string]$ArtifactsDir,       # backward-compat: treated as CONFIG_NETWORK_DIR
     [string]$IsoDir
 )
 
@@ -80,6 +80,42 @@ function Start-VMwareNetworkServices {
     }
 }
 
+function Get-VNetLibPath {
+    foreach ($p in @(
+        "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
+        "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
+    )) { if (Test-Path $p) { return $p } }
+    $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+."
+}
+
+function Invoke-VNetLib {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string[]]$CliArgs,
+        [int[]]$AllowedExitCodes = @(0)
+    )
+    $exe = Get-VNetLibPath
+    $p = Start-Process -FilePath $exe -ArgumentList (@('--') + $CliArgs) -Wait -PassThru
+    if ($AllowedExitCodes -notcontains $p.ExitCode) {
+        throw "vnetlib64 exited $($p.ExitCode): $($CliArgs -join ' ')"
+    }
+    return $p.ExitCode
+}
+
+function Open-VirtualNetworkEditor {
+    $candidates = @(
+        "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe",
+        "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe"
+    )
+    $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $exe) { throw "vmnetcfg.exe (Virtual Network Editor) not found. Please open it from VMware Workstation > Edit > Virtual Network Editor." }
+    Write-Host "Launching Virtual Network Editor... (configure VMnet8 NAT + VMnet20–23 host-only; mask 255.255.255.0)" -ForegroundColor Yellow
+    Write-Host "Close the editor when done to continue." -ForegroundColor Yellow
+    Start-Process -FilePath $exe -Wait
+}
+
 # --- main ---
 
 Start-PwshAdmin
@@ -110,7 +146,7 @@ if ($PSBoundParameters.ContainsKey('IsoDir') -and $IsoDir) { $IsoRoot = $IsoDir 
 # Ensure dirs
 New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir | Out-Null
 
-# Persist keys
+# Persist keys for future runs
 Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
 Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
 Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
@@ -128,62 +164,50 @@ if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTE
 Write-Host "`n==== ISO summary (informational) ====" -ForegroundColor Cyan
 Get-ChildItem -Path $IsoRoot -File | Sort-Object Length -Descending | Select-Object Name,Length,LastWriteTime | Format-Table
 
-# Networking
+# =================== NETWORKING ===================
 Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
+
+# 1) Optional force-manual path
 if ($ManualNetwork) {
-    Write-Host "Manual network configuration requested."
-    Write-Host "Open the Virtual Network Editor, configure VMnets, then press ENTER to continue."
-    Read-Host 'Press ENTER when done' | Out-Null
+    Open-VirtualNetworkEditor
 } else {
-    $cfg = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
+    # 1) Generate profile (canonical path)
+    $gen = Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1'
+    $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env')
+    if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
+
+    # 2) Import profile (tolerate 0/1 on stop/import), then start services
     try {
-        if (Test-Path $cfg) {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfg
-            if ($LASTEXITCODE -ne 0) { throw "configure-vmnet.ps1 failed ($LASTEXITCODE)." }
-            Start-VMwareNetworkServices
-        } else {
-            throw "configure-vmnet.ps1 not found"
-        }
-    }
-    catch {
-        Write-Warning "$($_.Exception.Message); attempting fallback"
-        $gen = Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1'
-        $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
-
-        Write-Host "Generating profile..."
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env')
-        if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
-        Write-Host "VMnet profile written: $profilePath"
-
-        $vnetlib = @(
-            "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
-            "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $vnetlib) { throw "vnetlib64.exe not found" }
-
-        Write-Host "Importing..."
-        # tolerate '1' on stop (nothing to stop)
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','dhcp') -Wait -PassThru
-        if ($p.ExitCode -notin 0,1) { throw "stop dhcp failed: $($p.ExitCode)" }
-
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','stop','nat') -Wait -PassThru
-        if ($p.ExitCode -notin 0,1) { throw "stop nat failed: $($p.ExitCode)" }
-
-        $p = Start-Process -FilePath $vnetlib -ArgumentList @('--','import',"$profilePath") -Wait -PassThru
-        if ($p.ExitCode -ne 0) { throw "import failed: $($p.ExitCode)" }
-
-        [void](Start-Process -FilePath $vnetlib -ArgumentList @('--','start','dhcp') -Wait -PassThru)
-        [void](Start-Process -FilePath $vnetlib -ArgumentList @('--','start','nat')  -Wait -PassThru)
-
+        Invoke-VNetLib -CliArgs @('stop','dhcp')      -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('stop','nat')       -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('import',"$profilePath") -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('start','dhcp')     -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('start','nat')      -AllowedExitCodes @(0,1)
         Start-VMwareNetworkServices
-        Write-Host "VMware networking (import): OK"
+    } catch {
+        Write-Warning "Automated import failed: $($_.Exception.Message)"
     }
 }
 
+# 3) Verify
 Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-if ($LASTEXITCODE -ne 0) { throw "verify-networking.ps1 exited with code $LASTEXITCODE" }
+$verified = ($LASTEXITCODE -eq 0)
 
+# 4) If verification failed, enter manual fallback once
+if (-not $verified) {
+    Write-Warning "Automated networking did not verify. Opening Virtual Network Editor for manual configuration..."
+    Open-VirtualNetworkEditor
+
+    Write-Host "`n==== Re-verifying networking after manual changes ====" -ForegroundColor Cyan
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw "verify-networking.ps1 failed after manual configuration. Please review VMnet settings and re-run."
+    }
+}
+
+# =================== NEXT STEPS ===================
 Write-Host "`n==== Bootstrapping WSL and Ansible ====" -ForegroundColor Cyan
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')         'wsl-prepare.ps1'
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-bootstrap.ps1')       'wsl-bootstrap.ps1'
