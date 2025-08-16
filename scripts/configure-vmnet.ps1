@@ -77,8 +77,8 @@ function Find-VNetLib {
 }
 function Invoke-VMnet([string[]]$Args){
   Write-Verbose ("vnetlib64 -- " + ($Args -join ' '))
-  & $script:VNetLib -- @Args
-  $exit = $LASTEXITCODE
+  $p = Start-Process -FilePath $script:VNetLib -ArgumentList @('--') + $Args -Wait -PassThru
+  $exit = $p.ExitCode
   if($exit -ne 0){ throw "vnetlib failed ($exit): $($Args -join ' ')" }
 }
 function Export-VMnetProfile([string]$Path){ Invoke-VMnet @("export",$Path) }
@@ -123,6 +123,34 @@ function Prune-HostOnlyDhcp([string[]]$Subnets,[string]$Mask){
     $raw = [regex]::Replace($raw,$pat,"","Singleline,IgnoreCase")
   }
   Set-Content -Path $dhcp -Value $raw -Encoding ASCII
+}
+
+function Ensure-VMwareNetworkServices {
+  $svcNames = @(
+    @{ Name='VMnetNatSvc'; Display='VMware NAT Service' },
+    @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
+  )
+  foreach ($s in $svcNames) {
+    $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
+    if (-not $svc) { $svc = Get-Service -DisplayName $s.Display -ErrorAction SilentlyContinue }
+    if ($svc) {
+      try {
+        $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$($svc.Name)'" -ErrorAction SilentlyContinue
+        if ($wmi -and $wmi.StartMode -ne 'Auto') { $null = $wmi.ChangeStartMode('Automatic') }
+      } catch {}
+      if ($svc.Status -ne 'Running') {
+        try { Start-Service $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
+        $deadline = (Get-Date).AddSeconds(20)
+        while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline) {
+          Start-Sleep -Milliseconds 500
+          $svc.Refresh()
+        }
+      }
+      if ($svc.Status -ne 'Running') { throw "Service '$($svc.Name)' failed to reach Running state." }
+    } else {
+      Write-Warning "VMware service '$($s.Name)' not found."
+    }
+  }
 }
 function Test-SvcsOk {
   $n=Get-Service "VMware NAT Service" -ErrorAction SilentlyContinue
@@ -231,11 +259,7 @@ Invoke-VMnet @("start","dhcp")
 Invoke-VMnet @("start","nat")
 
 # ensure services and prune DHCP for host-only nets
-foreach($s in @("VMware NAT Service","VMnetDHCP")){
-  $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
-  if($svc -and $svc.StartType -eq 'Disabled'){ Set-Service -Name $s -StartupType Automatic }
-  try{ Start-Service -Name $s -ErrorAction SilentlyContinue }catch{}
-}
+Ensure-VMwareNetworkServices
 Prune-HostOnlyDhcp @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
 try{ Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue }catch{}
 
