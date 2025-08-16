@@ -125,33 +125,6 @@ function Prune-HostOnlyDhcp([string[]]$Subnets,[string]$Mask){
   Set-Content -Path $dhcp -Value $raw -Encoding ASCII
 }
 
-function Ensure-VMwareNetworkServices {
-  $svcNames = @(
-    @{ Name='VMnetNatSvc'; Display='VMware NAT Service' },
-    @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
-  )
-  foreach ($s in $svcNames) {
-    $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
-    if (-not $svc) { $svc = Get-Service -DisplayName $s.Display -ErrorAction SilentlyContinue }
-    if ($svc) {
-      try {
-        $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$($svc.Name)'" -ErrorAction SilentlyContinue
-        if ($wmi -and $wmi.StartMode -ne 'Auto') { $null = $wmi.ChangeStartMode('Automatic') }
-      } catch {}
-      if ($svc.Status -ne 'Running') {
-        try { Start-Service $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
-        $deadline = (Get-Date).AddSeconds(20)
-        while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline) {
-          Start-Sleep -Milliseconds 500
-          $svc.Refresh()
-        }
-      }
-      if ($svc.Status -ne 'Running') { throw "Service '$($svc.Name)' failed to reach Running state." }
-    } else {
-      Write-Warning "VMware service '$($s.Name)' not found."
-    }
-  }
-}
 function Test-SvcsOk {
   $n=Get-Service "VMware NAT Service" -ErrorAction SilentlyContinue
   $d=Get-Service "VMnetDHCP" -ErrorAction SilentlyContinue
@@ -175,7 +148,7 @@ function Verify-State {
     $ip = (Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
     $rows += [pscustomobject]@{
       VMnet=$row.V; Type=$row.T; Subnet=$row.S; Mask=$row.M;
-      ExpectedIP=$row.IP; ActualIP=($ip ?? "");
+      ExpectedIP=$row.IP; ActualIP=(if ($ip) { $ip } else { "" });
       AdapterUp = ($ad -and $ad.Status -eq 'Up');
       ServicesOK = (Test-SvcsOk)
     }
@@ -189,7 +162,8 @@ function Print-Summary([object[]]$Rows,[string]$BackupFile,[string]$ImportFile){
   foreach($r in $Rows){
     $svc = if($r.ServicesOK){"OK"}else{"FAIL"}
     $okLine = ($r.AdapterUp -and $r.ServicesOK -and ($r.ExpectedIP -eq $r.ActualIP))
-    $line = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-15} {6,-8}" -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,$r.ExpectedIP,($r.ActualIP ?? "-"),$svc
+    $actual = if ($r.ActualIP) { $r.ActualIP } else { '-' }
+    $line = "{0,-8} {1,-9} {2,-16} {3,-15} {4,-15} {5,-15} {6,-8}" -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,$r.ExpectedIP,$actual,$svc
     if($okLine){ Write-Host $line -ForegroundColor Green } else { Write-Host $line -ForegroundColor Yellow; $bad=$true }
   }
   Write-Host "Backup file : $BackupFile"
@@ -252,14 +226,23 @@ if(-not $PSCmdlet.ShouldProcess("VMware VMnet configuration","Apply import comma
 }
 
 # stop → import → start
-Invoke-VMnet @("stop","dhcp")
-Invoke-VMnet @("stop","nat")
-Invoke-VMnet @("import",$import)
-Invoke-VMnet @("start","dhcp")
-Invoke-VMnet @("start","nat")
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList '-- stop','dhcp' -Wait -PassThru; $code = $p.ExitCode
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList '-- stop','nat'  -Wait -PassThru; $code = $p.ExitCode
+$p = Start-Process -FilePath $script:VNetLib -ArgumentList '-- import',"$import" -Wait -PassThru; $code = $p.ExitCode
+if ($code -ne 0) { throw "vnetlib64 import failed: $code" }
+[void](Start-Process -FilePath $script:VNetLib -ArgumentList '-- start','dhcp' -Wait -PassThru)
+[void](Start-Process -FilePath $script:VNetLib -ArgumentList '-- start','nat'  -Wait -PassThru)
 
-# ensure services and prune DHCP for host-only nets
-Ensure-VMwareNetworkServices
+# Ensure services running
+foreach ($pair in @(@('VMnetNatSvc','VMware NAT Service'), @('VMnetDHCP','VMware DHCP Service'))) {
+  $svc = Get-Service -Name $pair[0] -ErrorAction SilentlyContinue
+  if (-not $svc) { $svc = Get-Service -DisplayName $pair[1] -ErrorAction SilentlyContinue }
+  if ($svc -and $svc.Status -ne 'Running') {
+    try { Start-Service $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
+  }
+}
+
+# prune DHCP for host-only nets
 Prune-HostOnlyDhcp @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
 try{ Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue }catch{}
 

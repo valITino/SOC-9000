@@ -2,8 +2,7 @@
 param(
   [string]$EnvPath,
   [string]$OutFile,
-  [switch]$PassThru,
-  [string]$ArtifactsDir
+  [switch]$PassThru
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -34,16 +33,12 @@ function Is-Network24([string]$subnet){
 function HostOnlyIP([string]$subnet){
   $oct = $subnet -split '\.'; "$($oct[0]).$($oct[1]).$($oct[2]).1"
 }
-$repoRoot = Split-Path $PSScriptRoot -Parent
-$envFile  = if($EnvPath){ $EnvPath } elseif (Test-Path (Join-Path $repoRoot '.env')) { Join-Path $repoRoot '.env' } elseif (Test-Path (Join-Path $repoRoot '.env.example')) { Join-Path $repoRoot '.env.example' } else { $null }
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$envFile  = if($EnvPath){ $EnvPath } elseif (Test-Path (Join-Path $RepoRoot '.env')) { Join-Path $RepoRoot '.env' } elseif (Test-Path (Join-Path $RepoRoot '.env.example')) { Join-Path $RepoRoot '.env.example' } else { $null }
 $envMap   = if($envFile){ Read-DotEnv $envFile } else { @{} }
 
-$defaults = if (Test-Path 'E:\\') {
-  @{ ARTIFACTS_DIR='E:\\SOC-9000\\artifacts\\network' }
-} else {
-  @{ ARTIFACTS_DIR=(Join-Path $repoRoot 'artifacts\\network') }
-}
-$artDir = if ($PSBoundParameters.ContainsKey('ArtifactsDir')) { $ArtifactsDir } elseif ($envMap.ContainsKey('ARTIFACTS_DIR')) { $envMap['ARTIFACTS_DIR'] } else { $defaults.ARTIFACTS_DIR }
+$EExists = Test-Path 'E:\\'
+$DefaultArtifacts = $(if ($EExists) { 'E:\\SOC-9000\\artifacts\\network' } else { (Join-Path $RepoRoot 'artifacts\\network') })
 $Vmnet8Subnet  = $envMap['VMNET8_SUBNET'];  if(-not $Vmnet8Subnet){  $Vmnet8Subnet  = '192.168.37.0' }
 $Vmnet8Mask    = $envMap['VMNET8_MASK'];    if(-not $Vmnet8Mask){    $Vmnet8Mask    = '255.255.255.0' }
 $Vmnet8HostIp  = $envMap['VMNET8_HOSTIP'];  if(-not $Vmnet8HostIp){  $Vmnet8HostIp  = '192.168.37.1' }
@@ -85,15 +80,14 @@ foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vm
   )
 }
 $text = ($lines -join "`r`n")
-$art = $artDir
 if (-not $OutFile) {
-  New-Item -ItemType Directory -Force -Path $art | Out-Null
-  $OutFile = Join-Path $art 'vmnet-profile.txt'
+  New-Item -ItemType Directory -Force -Path $DefaultArtifacts | Out-Null
+  $OutFile = Join-Path $DefaultArtifacts 'vmnet-profile.txt'
 } else {
   New-Item -ItemType Directory -Force -Path (Split-Path $OutFile -Parent) | Out-Null
 }
 Set-Content -Path $OutFile -Value $text -Encoding ASCII
-$logDir = Join-Path $repoRoot 'logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$logDir = Join-Path $RepoRoot 'logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"; $logCopy = Join-Path $logDir "vmnet-profile-$ts.txt"
 Set-Content -Path $logCopy -Value $text -Encoding ASCII
 Write-Host "VMnet profile written: $OutFile"
