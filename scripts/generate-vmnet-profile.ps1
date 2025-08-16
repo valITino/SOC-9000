@@ -78,7 +78,7 @@ foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
 }
 Test-ConditionOrThrow (Test-IPv4Mask $HostOnlyMask) "HOSTONLY_MASK is invalid."
 
-# Build vnetlib import text (create things before update)
+# Build vnetlib import text (create first, then update)
 $lines = @()
 $lines += @(
     "add adapter vmnet8",
@@ -114,7 +114,7 @@ foreach($def in @(
 }
 $text = ($lines -join "`r`n")
 
-# Write canonical profile (InstallRoot\config\network\vmnet-profile.txt)
+# Write canonical profile
 if (-not $OutFile) {
     $OutFile = Join-Path $ProfileDir 'vmnet-profile.txt'
 } else {
@@ -123,7 +123,7 @@ if (-not $OutFile) {
 Set-Content -Path $OutFile -Value $text -Encoding ASCII
 Write-Host "VMnet profile written: $OutFile"
 
-# Optional snapshot to logs
+# Optional snapshot to logs (for auditing)
 if ($CopyToLogs) {
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
     $logCopy = Join-Path $LogDir "vmnet-profile-$ts.txt"

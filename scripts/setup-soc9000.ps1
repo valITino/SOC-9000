@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$ManualNetwork,
-    [string]$ArtifactsDir,   # kept for back-compat, maps to CONFIG_NETWORK_DIR
+    [switch]$ManualNetwork,      # force manual editor
+    [string]$ArtifactsDir,       # back-compat: treated as CONFIG_NETWORK_DIR
     [string]$IsoDir
 )
 
@@ -71,16 +71,25 @@ function Open-VirtualNetworkEditor {
         'C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe'
     )
     $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $exe) { throw 'vmnetcfg.exe not found. Open VMware Workstation > Edit > Virtual Network Editor.' }
+    if (-not $exe) {
+        throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
+    }
     Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
-    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet20–VMnet23 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
+    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet20-VMnet23 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
     Start-Process -FilePath $exe -Wait | Out-Null
 }
 
-# ---------- ISO gating ----------
+function Convert-FileToAsciiCrLf([string]$Path) {
+    $raw   = Get-Content $Path -Raw
+    $ascii = [System.Text.Encoding]::ASCII.GetString([System.Text.Encoding]::UTF8.GetBytes($raw))
+    $clean = ($ascii -replace "`r?`n","`r`n") -replace '[^\x00-\x7F]', ''
+    Set-Content -Path $Path -Value $clean -Encoding Ascii
+}
 
+# ---------- ISO gating ----------
 function Test-IsosReady {
     param([string]$IsoRoot)
+
     $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
     $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
     $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
@@ -103,25 +112,34 @@ function Test-IsosReady {
 
 Start-PwshAdmin
 
+# Resolve repo root and install root
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $EExists  = Test-Path 'E:\'
 $DefaultInstallRoot = if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
 
+# .env
 $EnvFile = Join-Path $RepoRoot '.env'
 $EnvMap  = Get-DotEnvMap $EnvFile
 
+# Install-root derived paths (with env/param overrides)
 $InstallRoot = if ($EnvMap['INSTALL_ROOT']) { $EnvMap['INSTALL_ROOT'] } else { $DefaultInstallRoot }
+
 $ConfigNetworkDir = if ($EnvMap['CONFIG_NETWORK_DIR']) { $EnvMap['CONFIG_NETWORK_DIR'] } else { Join-Path $InstallRoot 'config\network' }
-$IsoRoot = if ($IsoDir) { $IsoDir } elseif ($EnvMap['ISO_DIR']) { $EnvMap['ISO_DIR'] } else { Join-Path $InstallRoot 'isos' }
 if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir } # back-compat
 
-$LogDir = Join-Path $InstallRoot 'logs\installation'
+$IsoRoot = if ($IsoDir) { $IsoDir } elseif ($EnvMap['ISO_DIR']) { $EnvMap['ISO_DIR'] } else { Join-Path $InstallRoot 'isos' }
+
+$LogDir  = Join-Path $InstallRoot 'logs\installation'
+
+# Ensure dirs
 New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir | Out-Null
 
+# Persist keys back to .env if missing
 Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
 Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
 Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
 
+# Transcript
 try { Stop-Transcript | Out-Null } catch {}
 $ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $LogDir "setup-soc9000-$ts.log"
@@ -153,14 +171,19 @@ Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
 if ($ManualNetwork) {
     Open-VirtualNetworkEditor
 } else {
-    # Always generate canonical profile for audit
+    # 1) Always generate canonical profile for audit
     $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1') `
       -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env') -CopyToLogs
     if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
 
-    # Now run the full configure/import which also forces adapter IPs
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\configure-vmnet.ps1')
+    # 2) Normalize configure-vmnet.ps1 (guard against encoding/line ending issues)
+    $cfgPath = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
+    Convert-FileToAsciiCrLf $cfgPath
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
+
+    # 3) Run the full configure/import which also forces adapter IPs
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE). Aborting."
         Stop-Transcript | Out-Null
@@ -168,7 +191,7 @@ if ($ManualNetwork) {
     }
 }
 
-# 3) Verify ONCE; if not OK -> abort (do not continue to WSL)
+# 4) Verify ONCE; if not OK -> abort (do not continue to WSL)
 Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
 if ($LASTEXITCODE -ne 0) {

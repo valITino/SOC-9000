@@ -28,7 +28,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ---------- helpers ----------
+# -------- helpers --------
 function Start-AdminElevation {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p  = New-Object Security.Principal.WindowsPrincipal $id
@@ -173,7 +173,7 @@ function Set-AdapterIPv4 {
     $ad = Get-NetAdapter -Name $Alias -ErrorAction SilentlyContinue
     if (-not $ad) { return }
     $pref = Convert-MaskToPrefixLength $Mask
-    # remove any existing IPv4s first (including APIPA)
+    # remove any existing IPv4s (including APIPA)
     Get-NetIPAddress -InterfaceAlias $Alias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             ForEach-Object { try { Remove-NetIPAddress -InterfaceAlias $Alias -IPAddress $_.IPAddress -Confirm:$false -ErrorAction SilentlyContinue } catch {} }
     if ($ad.Status -ne 'Up') { try { Enable-NetAdapter -Name $Alias -Confirm:$false -ErrorAction SilentlyContinue } catch {} }
@@ -195,28 +195,40 @@ function Wait-AdapterUp([string]$Alias,[int]$Seconds=10){
 
 function Test-VmnetState {
     param(
-        [string]$Vmnet8Subnet,[string]$Vmnet8Mask,[string]$Vmnet8HostIp,
-        [string]$Vmnet20Subnet,[string]$Vmnet21Subnet,[string]$Vmnet22Subnet,[string]$Vmnet23Subnet,[string]$HostOnlyMask
+        [string]$Vmnet8Subnet,  [string]$Vmnet8Mask,  [string]$Vmnet8HostIp,
+        [string]$Vmnet20Subnet, [string]$Vmnet21Subnet, [string]$Vmnet22Subnet, [string]$Vmnet23Subnet,
+        [string]$HostOnlyMask
     )
-    $rows=@()
-    $targets=@(
-        @{V='VMnet8';  T='NAT';      S=$Vmnet8Subnet;  M=$Vmnet8Mask;   IP=$Vmnet8HostIp},
-        @{V='VMnet20'; T='HostOnly'; S=$Vmnet20Subnet; M=$HostOnlyMask; IP=(Get-HostOnlyGatewayIp $Vmnet20Subnet)},
-        @{V='VMnet21'; T='HostOnly'; S=$Vmnet21Subnet; M=$HostOnlyMask; IP=(Get-HostOnlyGatewayIp $Vmnet21Subnet)},
-        @{V='VMnet22'; T='HostOnly'; S=$Vmnet22Subnet; M=$HostOnlyMask; IP=(Get-HostOnlyGatewayIp $Vmnet22Subnet)},
-        @{V='VMnet23'; T='HostOnly'; S=$Vmnet23Subnet; M=$HostOnlyMask; IP=(Get-HostOnlyGatewayIp $Vmnet23Subnet)}
+
+    $rows = @()
+
+    $targets = @(
+        @{ V = 'VMnet8';  T = 'NAT';      S = $Vmnet8Subnet;  M = $Vmnet8Mask;   IP = $Vmnet8HostIp },
+        @{ V = 'VMnet20'; T = 'HostOnly'; S = $Vmnet20Subnet; M = $HostOnlyMask; IP = (Get-HostOnlyGatewayIp $Vmnet20Subnet) },
+        @{ V = 'VMnet21'; T = 'HostOnly'; S = $Vmnet21Subnet; M = $HostOnlyMask; IP = (Get-HostOnlyGatewayIp $Vmnet21Subnet) },
+        @{ V = 'VMnet22'; T = 'HostOnly'; S = $Vmnet22Subnet; M = $HostOnlyMask; IP = (Get-HostOnlyGatewayIp $Vmnet22Subnet) },
+        @{ V = 'VMnet23'; T = 'HostOnly'; S = $Vmnet23Subnet; M = $HostOnlyMask; IP = (Get-HostOnlyGatewayIp $Vmnet23Subnet) }
     )
-    foreach($row in $targets){
-        $alias="VMware Network Adapter $($row.V)"
-        $ad   =Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
-        $ipO  =Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+
+    foreach ($row in $targets) {
+        $alias   = "VMware Network Adapter $($row.V)"
+        $ad      = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
+        $ipEntry = Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+        $actual  = if ($ipEntry) { $ipEntry.IPAddress } else { '' }
+
         $rows += [pscustomobject]@{
-        VMnet=$row.V; Type=$row.T; Subnet=$row.S; Mask=$row.M;
-        ExpectedIP=$row.IP; ActualIP=(if($ipO){$ipO.IPAddress}else{''});
-        AdapterUp=($ad -and $ad.Status -eq 'Up'); ServicesOK=(Test-ServiceStateOk)
+            VMnet      = $row.V
+            Type       = $row.T
+            Subnet     = $row.S
+            Mask       = $row.M
+            ExpectedIP = $row.IP
+            ActualIP   = $actual
+            AdapterUp  = ($ad -and $ad.Status -eq 'Up')
+            ServicesOK = (Test-ServiceStateOk)
+        }
     }
-}
-$rows
+
+    return $rows
 }
 function Write-VmnetSummary {
 param([object[]]$Rows,[string]$BackupFile,[string]$ImportFile)
@@ -238,7 +250,7 @@ Write-Host "==========================================================" -Foregro
 if($bad){ throw "One or more checks failed. Validate IPs/masks; ensure 'VMware NAT Service' and 'VMnetDHCP' are Running; then re-run." }
 }
 
-# ---------- main ----------
+# -------- main --------
 function Invoke-Main {
 Start-AdminElevation
 
@@ -259,6 +271,7 @@ $ts  = Get-Date -Format "yyyyMMdd-HHmmss"
 $log = Join-Path $LogDir "configure-vmnet-$ts.log"
 Start-Transcript -Path $log -Force | Out-Null
 
+# env overrides
 Set-ValueFromEnv $EnvMap 'VMNET8_SUBNET'   ([ref]$Vmnet8Subnet)
 Set-ValueFromEnv $EnvMap 'VMNET8_MASK'     ([ref]$Vmnet8Mask)
 Set-ValueFromEnv $EnvMap 'VMNET8_HOSTIP'   ([ref]$Vmnet8HostIp)
@@ -269,6 +282,7 @@ Set-ValueFromEnv $EnvMap 'VMNET22_SUBNET'  ([ref]$Vmnet22Subnet)
 Set-ValueFromEnv $EnvMap 'VMNET23_SUBNET'  ([ref]$Vmnet23Subnet)
 Set-ValueFromEnv $EnvMap 'HOSTONLY_MASK'   ([ref]$HostOnlyMask)
 
+# validate
 Test-ConditionOrThrow (Test-Network24 $Vmnet8Subnet)    "VMNET8_SUBNET invalid (A.B.C.0)."
 Test-ConditionOrThrow (Test-IPv4Mask  $Vmnet8Mask)      "VMNET8_MASK invalid."
 Test-ConditionOrThrow (Test-IPv4Address $Vmnet8HostIp)  "VMNET8_HOSTIP invalid."
@@ -278,6 +292,7 @@ Test-ConditionOrThrow (Test-Network24 $s) "Host-only subnet '$s' invalid (A.B.C.
 }
 Test-ConditionOrThrow (Test-IPv4Mask $HostOnlyMask) "HOSTONLY_MASK invalid."
 
+# build/preview import
 $importText = New-ImportText -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gateway $Vmnet8Gateway `
                                -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
 if ($Preview) {
@@ -290,18 +305,21 @@ return
 $importFile = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
 Set-Content -Path $importFile -Value $importText -Encoding ASCII
 
+# backup current
 $backup = Join-Path $LogDir "vmnet-backup-$ts.txt"
 try { Invoke-VMnet -CliArgs @('export',$backup) -AllowedExitCodes @(0,1) } catch { Write-Warning "Backup export failed: $($_.Exception.Message)" }
 
+# stop -> import -> start (tolerate 0/1 on stop/import)
 Invoke-VMnet -CliArgs @('stop','dhcp')          -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('stop','nat')           -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('import',"$importFile") -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('start','dhcp')         -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('start','nat')          -AllowedExitCodes @(0,1)
 
+# services up
 Start-VMwareNetworkServices
 
-# Force adapter IPs (fix APIPA cases)
+# force adapter IPs (handles APIPA after import)
 Set-AdapterIPv4 -Alias "VMware Network Adapter VMnet8"  -Ip $Vmnet8HostIp -Mask $Vmnet8Mask
 foreach($x in @(
 @{Alias="VMware Network Adapter VMnet20"; S=$Vmnet20Subnet},
@@ -313,9 +331,11 @@ Set-AdapterIPv4 -Alias $x.Alias -Ip (Get-HostOnlyGatewayIp $x.S) -Mask $HostOnly
 }
 Wait-AdapterUp "VMware Network Adapter VMnet8" 10 | Out-Null
 
+# prune DHCP scopes for host-only and bounce DHCP
 Remove-HostOnlyDhcpScopes @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
 try { Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue } catch {}
 
+# verify + summary
 $rows = Test-VmnetState -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp `
                           -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
 Write-VmnetSummary -Rows $rows -BackupFile $backup -ImportFile $importFile
