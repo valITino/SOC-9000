@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$ManualNetwork,      # force manual editor
-    [string]$ArtifactsDir,       # back-compat: treated as CONFIG_NETWORK_DIR
+    [switch]$ManualNetwork,
+    [string]$ArtifactsDir,   # kept for back-compat, maps to CONFIG_NETWORK_DIR
     [string]$IsoDir
 )
 
@@ -65,71 +65,22 @@ function Get-VNetLibPath {
     throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+."
 }
 
-function Invoke-VNetLib {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string[]]$CliArgs,
-        [int[]]$AllowedExitCodes = @(0)
-    )
-    $exe = Get-VNetLibPath
-    $p = Start-Process -FilePath $exe -ArgumentList (@('--') + $CliArgs) -Wait -PassThru
-    if ($AllowedExitCodes -notcontains $p.ExitCode) {
-        throw "vnetlib64 exited $($p.ExitCode): $($CliArgs -join ' ')"
-    }
-}
-
 function Open-VirtualNetworkEditor {
     $candidates = @(
         'C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe',
         'C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe'
     )
     $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $exe) {
-        throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
-    }
+    if (-not $exe) { throw 'vmnetcfg.exe not found. Open VMware Workstation > Edit > Virtual Network Editor.' }
     Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
-    Write-Host 'Configure VMnet8 as NAT (DHCP on), and leave VMnet1 as-is. Create VMnet20-VMnet23 as Host-only (mask 255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
+    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet20–VMnet23 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
     Start-Process -FilePath $exe -Wait | Out-Null
-}
-
-function Initialize-VMnetAdapters {
-    # idempotent: code 12 means "already exists"
-    param([string[]]$VmnetNames)
-    foreach($vm in $VmnetNames){
-        Invoke-VNetLib -CliArgs @('add','adapter',$vm) -AllowedExitCodes @(0,1,12)
-    }
-}
-
-function Start-VMwareNetworkServices {
-    $svcNames = @(
-        @{ Name='VMnetNatSvc'; Display='VMware NAT Service'  },
-        @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
-    )
-    foreach ($s in $svcNames) {
-        $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
-        if (-not $svc) { $svc = Get-Service -DisplayName $s.Display -ErrorAction SilentlyContinue }
-        if ($svc) {
-            try {
-                $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$($svc.Name)'" -ErrorAction SilentlyContinue
-                if ($wmi -and $wmi.StartMode -ne 'Auto') { $null = $wmi.ChangeStartMode('Automatic') }
-            } catch {}
-            if ($svc.Status -ne 'Running') {
-                try { Start-Service -InputObject $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
-                $deadline = (Get-Date).AddSeconds(20)
-                do { Start-Sleep -Milliseconds 500; $svc.Refresh() } while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline)
-            }
-            if ($svc.Status -ne 'Running') { throw "Service '$($svc.Name)' failed to reach Running state." }
-        } else {
-            Write-Warning "VMware service '$($s.Name)' not found."
-        }
-    }
 }
 
 # ---------- ISO gating ----------
 
 function Test-IsosReady {
     param([string]$IsoRoot)
-
     $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
     $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
     $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
@@ -152,32 +103,21 @@ function Test-IsosReady {
 
 Start-PwshAdmin
 
-# Resolve roots
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $EExists  = Test-Path 'E:\'
-$DefaultInstallRoot = $(if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' })
+$DefaultInstallRoot = if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
 
-# .env coalesce
 $EnvFile = Join-Path $RepoRoot '.env'
 $EnvMap  = Get-DotEnvMap $EnvFile
 
-$InstallRoot = $DefaultInstallRoot
-if ($EnvMap.ContainsKey('INSTALL_ROOT') -and $EnvMap['INSTALL_ROOT']) { $InstallRoot = $EnvMap['INSTALL_ROOT'] }
+$InstallRoot = if ($EnvMap['INSTALL_ROOT']) { $EnvMap['INSTALL_ROOT'] } else { $DefaultInstallRoot }
+$ConfigNetworkDir = if ($EnvMap['CONFIG_NETWORK_DIR']) { $EnvMap['CONFIG_NETWORK_DIR'] } else { Join-Path $InstallRoot 'config\network' }
+$IsoRoot = if ($IsoDir) { $IsoDir } elseif ($EnvMap['ISO_DIR']) { $EnvMap['ISO_DIR'] } else { Join-Path $InstallRoot 'isos' }
+if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir } # back-compat
 
-# Directories under InstallRoot
-$ConfigNetworkDir = Join-Path $InstallRoot 'config\network'
-$IsoRoot          = if ($IsoDir) { $IsoDir } else { (Join-Path $InstallRoot 'isos') }
-$LogDir           = Join-Path $InstallRoot 'logs\installation'
-
-# Back-compat overrides
-if ($EnvMap.ContainsKey('CONFIG_NETWORK_DIR') -and $EnvMap['CONFIG_NETWORK_DIR']) { $ConfigNetworkDir = $EnvMap['CONFIG_NETWORK_DIR'] }
-if ($EnvMap.ContainsKey('ISO_DIR') -and $EnvMap['ISO_DIR']) { $IsoRoot = $EnvMap['ISO_DIR'] }
-if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir }
-
-# Ensure dirs
+$LogDir = Join-Path $InstallRoot 'logs\installation'
 New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir | Out-Null
 
-# Persist keys
 Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
 Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
 Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
@@ -212,26 +152,17 @@ Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
 
 if ($ManualNetwork) {
     Open-VirtualNetworkEditor
-    Write-Host "Manual network configuration done." -ForegroundColor Green
 } else {
-    # 1) Generate profile (canonical path)
-    $gen = Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1'
+    # Always generate canonical profile for audit
     $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env')
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1') `
+      -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env') -CopyToLogs
     if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
 
-    # 2) Import profile (tolerate 0/1 on stop/import), ensure adapters (0/1/12), start services
-    try {
-        Invoke-VNetLib -CliArgs @('stop','dhcp')                 -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('stop','nat')                  -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('import',"$profilePath")       -AllowedExitCodes @(0,1)
-        Initialize-VMnetAdapters -VmnetNames @('vmnet8','vmnet20','vmnet21','vmnet22','vmnet23')
-        Invoke-VNetLib -CliArgs @('start','dhcp')                -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('start','nat')                 -AllowedExitCodes @(0,1)
-        Start-VMwareNetworkServices
-    } catch {
-        Write-Error "Automated network import failed: $($_.Exception.Message)"
-        Write-Host "Aborting. See log at: $log" -ForegroundColor Yellow
+    # Now run the full configure/import which also forces adapter IPs
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\configure-vmnet.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE). Aborting."
         Stop-Transcript | Out-Null
         exit 1
     }
