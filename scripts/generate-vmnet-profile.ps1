@@ -2,7 +2,8 @@
 param(
     [string]$EnvPath,
     [string]$OutFile,
-    [switch]$PassThru
+    [switch]$PassThru,
+    [switch]$CopyToLogs  # optional: snapshot to logs if set
 )
 
 Set-StrictMode -Version Latest
@@ -36,19 +37,19 @@ function Get-HostOnlyGatewayIp([string]$subnet){
     $oct = $subnet -split '\.'; "$($oct[0]).$($oct[1]).$($oct[2]).1"
 }
 
+# Resolve install root and defaults
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $envFile  = if($EnvPath){ $EnvPath } elseif (Test-Path (Join-Path $RepoRoot '.env')) { Join-Path $RepoRoot '.env' } elseif (Test-Path (Join-Path $RepoRoot '.env.example')) { Join-Path $RepoRoot '.env.example' } else { $null }
 $envMap   = if($envFile){ Get-DotEnvMap $envFile } else { @{} }
 
-# InstallRoot & default locations
 $EExists = Test-Path 'E:\'
 $DefaultInstallRoot = $(if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' })
 $InstallRoot = $DefaultInstallRoot
 if ($envMap.ContainsKey('INSTALL_ROOT') -and $envMap['INSTALL_ROOT']) { $InstallRoot = $envMap['INSTALL_ROOT'] }
 
-$DefaultProfileDir = Join-Path $InstallRoot 'config\network'
-$LogDir            = Join-Path $InstallRoot 'logs\installation'
-New-Item -ItemType Directory -Force -Path $DefaultProfileDir,$LogDir | Out-Null
+$ProfileDir = Join-Path $InstallRoot 'config\network'
+$LogDir     = Join-Path $InstallRoot 'logs\installation'
+New-Item -ItemType Directory -Force -Path $ProfileDir,$LogDir | Out-Null
 
 # addressing from env or defaults
 $Vmnet8Subnet  = $envMap['VMNET8_SUBNET'];  if(-not $Vmnet8Subnet){  $Vmnet8Subnet  = '192.168.37.0' }
@@ -71,22 +72,30 @@ foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
 }
 Test-ConditionOrThrow (Test-IPv4Mask $HostOnlyMask) "HOSTONLY_MASK is invalid."
 
-# build profile
+# --- Build profile text ---
 $lines = @()
+
+# vmnet8 NAT with DHCP (create things before updating them)
 $lines += @(
+    "add adapter vmnet8",
     "add vnet vmnet8",
     "set vnet vmnet8 addr $Vmnet8Subnet",
     "set vnet vmnet8 mask $Vmnet8Mask",
     "set adapter vmnet8 addr $Vmnet8HostIp",
+    "add nat vmnet8",
     "set nat vmnet8 internalipaddr $Vmnet8Gateway",
+    "add dhcp vmnet8",
     "update adapter vmnet8",
     "update nat vmnet8",
     "update dhcp vmnet8",
     ""
 )
+
+# host-only vmnets (explicitly create adapters)
 foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vmnet22Subnet},@{n=23;s=$Vmnet23Subnet})) {
     $hn = "vmnet$($def.n)"; $hip = Get-HostOnlyGatewayIp $def.s
     $lines += @(
+        "add adapter $hn",
         "add vnet $hn",
         "set vnet $hn addr $($def.s)",
         "set vnet $hn mask $HostOnlyMask",
@@ -95,20 +104,22 @@ foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vm
         ""
     )
 }
+
 $text = ($lines -join "`r`n")
 
-# write output to InstallRoot\config\network (or user-specified)
-if (-not $OutFile) {
-    $OutFile = Join-Path $DefaultProfileDir 'vmnet-profile.txt'
-} else {
+# write canonical profile
+if (-not $OutFile) { $OutFile = Join-Path $ProfileDir 'vmnet-profile.txt' } else {
     New-Item -ItemType Directory -Force -Path (Split-Path $OutFile -Parent) | Out-Null
 }
 Set-Content -Path $OutFile -Value $text -Encoding ASCII
-
-# copy to InstallRoot\logs\installation for traceability (not in repo)
-$ts = Get-Date -Format "yyyyMMdd-HHmmss"
-$logCopy = Join-Path $LogDir "vmnet-profile-$ts.txt"
-Set-Content -Path $logCopy -Value $text -Encoding ASCII
-
 Write-Host "VMnet profile written: $OutFile"
+
+# optional snapshot to logs
+if ($CopyToLogs) {
+    $ts = Get-Date -Format "yyyyMMdd-HHmmss"
+    $logCopy = Join-Path $LogDir "vmnet-profile-$ts.txt"
+    Set-Content -Path $logCopy -Value $text -Encoding ASCII
+    Write-Host "VMnet profile snapshot copied to: $logCopy"
+}
+
 if ($PassThru) { $text }

@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 trap {
     Write-Error $_
     try { Stop-Transcript | Out-Null } catch {}
-    Read-Host 'Press ENTER to exit'
+    Read-Host 'Press ENTER to exit' | Out-Null
     exit 1
 }
 
@@ -22,9 +22,9 @@ function Start-PwshAdmin {
     $needsPwsh  = $PSVersionTable.PSVersion.Major -lt 7
     if ($needsAdmin -or $needsPwsh) {
         Write-Host "Relaunching in elevated PowerShell 7..." -ForegroundColor Cyan
-        $pass = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
+        $pwshArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
         $verb = if ($needsAdmin) { 'RunAs' } else { 'Open' }
-        Start-Process pwsh -Verb $verb -ArgumentList $pass | Out-Null
+        Start-Process pwsh -Verb $verb -ArgumentList $pwshArgs | Out-Null
         exit 0
     }
 }
@@ -57,8 +57,8 @@ function Invoke-IfScriptExists([string]$ScriptPath,[string]$FriendlyName) {
 
 function Start-VMwareNetworkServices {
     $svcNames = @(
-        @{ Name='VMnetNatSvc'; Display='VMware NAT Service'   },
-        @{ Name='VMnetDHCP';   Display='VMware DHCP Service'  }
+        @{ Name='VMnetNatSvc'; Display='VMware NAT Service'  },
+        @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
     )
     foreach ($s in $svcNames) {
         $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
@@ -101,7 +101,6 @@ function Invoke-VNetLib {
     if ($AllowedExitCodes -notcontains $p.ExitCode) {
         throw "vnetlib64 exited $($p.ExitCode): $($CliArgs -join ' ')"
     }
-    return $p.ExitCode
 }
 
 function Open-VirtualNetworkEditor {
@@ -113,10 +112,16 @@ function Open-VirtualNetworkEditor {
     if (-not $exe) {
         throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
     }
-
     Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
     Write-Host 'Configure VMnet8 as NAT (DHCP on), and VMnet20-VMnet23 as Host-only (mask 255.255.255.0). Then close the editor.' -ForegroundColor Yellow
     Start-Process -FilePath $exe -Wait | Out-Null
+}
+
+function Initialize-VMnetAdapters {
+    param([string[]]$VmnetNames)
+    foreach($vm in $VmnetNames){
+        Invoke-VNetLib -CliArgs @('add','adapter',$vm) -AllowedExitCodes @(0,1)
+    }
 }
 
 # --- main ---
@@ -170,8 +175,8 @@ Get-ChildItem -Path $IsoRoot -File | Sort-Object Length -Descending | Select-Obj
 # =================== NETWORKING ===================
 Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
 
-# 1) Optional force-manual path
 if ($ManualNetwork) {
+    # Force manual config immediately
     Open-VirtualNetworkEditor
 } else {
     # 1) Generate profile (canonical path)
@@ -182,23 +187,38 @@ if ($ManualNetwork) {
 
     # 2) Import profile (tolerate 0/1 on stop/import), then start services
     try {
-        Invoke-VNetLib -CliArgs @('stop','dhcp')      -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('stop','nat')       -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('import',"$profilePath") -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('start','dhcp')     -AllowedExitCodes @(0,1)
-        Invoke-VNetLib -CliArgs @('start','nat')      -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('stop','dhcp')                 -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('stop','nat')                  -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('import',"$profilePath")       -AllowedExitCodes @(0,1)
+        # Ensure adapters exist even if import didn't create them
+        Initialize-VMnetAdapters -VmnetNames @('vmnet8','vmnet20','vmnet21','vmnet22','vmnet23')
+        Invoke-VNetLib -CliArgs @('start','dhcp')                -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('start','nat')                 -AllowedExitCodes @(0,1)
         Start-VMwareNetworkServices
     } catch {
         Write-Warning "Automated import failed: $($_.Exception.Message)"
     }
 }
 
-# 3) Verify
+# 3) Verify once
 Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
 $verified = ($LASTEXITCODE -eq 0)
 
-# 4) If verification failed, enter manual fallback once
+# 3b) If not verified, try one-time device install + adapter ensure, then re-verify
+if (-not $verified -and -not $ManualNetwork) {
+    Write-Warning "Verification failed. Attempting to repair VMware virtual NIC devices and re-verify..."
+    try {
+        Invoke-VNetLib -CliArgs @('install','devices') -AllowedExitCodes @(0,1)
+        Ensure-AdaptersPresent -VmnetNames @('vmnet8','vmnet20','vmnet21','vmnet22','vmnet23')
+    } catch {
+        Write-Warning "Device repair attempt failed: $($_.Exception.Message)"
+    }
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
+    $verified = ($LASTEXITCODE -eq 0)
+}
+
+# 4) If still not verified, open manual editor and verify again
 if (-not $verified) {
     Write-Warning "Automated networking did not verify. Opening Virtual Network Editor for manual configuration..."
     Open-VirtualNetworkEditor
