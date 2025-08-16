@@ -166,34 +166,44 @@ function Get-UsableHostOnlyId {
         [int[]]$AlreadyUsed
     )
 
+    # 0,1,8 are special; never pick anything already allocated in this run
     $reserved = @(0,1,8) + $AlreadyUsed
-    $existing = (Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue |
+
+    # what VMnet adapters already exist on the host (ids only)
+    $existingIds = (Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue |
             ForEach-Object {
                 if ($_ -and $_.Name -match 'VMnet(\d+)$') { [int]$Matches[1] }
             }) | Sort-Object -Unique
 
-    $others = (2..23 | Where-Object { $reserved -notcontains $_ -and $_ -ne 8 -and ($Preferred -notcontains $_) }) |
-            Where-Object { $existing -notcontains $_ }
-    $candidates = @() + $Preferred + $others
+    # candidate pool: 2..19 are the commonly safe host-only/bridge range
+    $pool = 2..19 | Where-Object { $reserved -notcontains $_ -and $_ -ne 8 }
+
+    # order of tries: Preferred → Existing (reuse) → Others; de-dupe while preserving order
+    $candidates = ($Preferred + $existingIds + $pool) | Where-Object { $_ -ne $null } | Select-Object -Unique
 
     foreach ($id in $candidates) {
         $alias = "VMware Network Adapter VMnet$id"
+
+        # ensure vnet + adapter exist (ok if they already do)
         Invoke-VMnet -CliArgs @('add','adapter',"vmnet$id") -AllowedExitCodes @(0,1,12) | Out-Null
         Invoke-VMnet -CliArgs @('add','vnet',"vmnet$id")    -AllowedExitCodes @(0,1,12) | Out-Null
 
+        # set network address and mask
         $code1 = Invoke-VMnetCode @('set','vnet',"vmnet$id",'addr',$Subnet)
         if ($code1 -ne 0) { continue }
         $code2 = Invoke-VMnetCode @('set','vnet',"vmnet$id",'mask',$Mask)
         if ($code2 -ne 0) { continue }
 
+        # apply adapter updates
         Invoke-VMnet -CliArgs @('update','adapter',"vmnet$id") -AllowedExitCodes @(0,1,12) | Out-Null
 
-        # wait until NIC shows up
-        $deadline = (Get-Date).AddSeconds(20)
+        # wait up to 30s for Windows to surface the NIC
+        $deadline = (Get-Date).AddSeconds(30)
         do {
             Start-Sleep -Milliseconds 500
             $ad = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
         } while (-not $ad -and (Get-Date) -lt $deadline)
+
         if ($ad) { return $id }
     }
 
@@ -308,7 +318,7 @@ Set-FromEnv $EnvMap 'VMNET22_SUBNET'  ([ref]$Vmnet22Subnet)
 Set-FromEnv $EnvMap 'VMNET23_SUBNET'  ([ref]$Vmnet23Subnet)
 Set-FromEnv $EnvMap 'HOSTONLY_MASK'   ([ref]$HostOnlyMask)
 
-# preferred host-only IDs from .env or default 9–12
+# preferred host-only IDs from .env or default 9???12
 [int[]]$PreferredIds = @()
 if ($EnvMap.ContainsKey('HOSTONLY_VMNET_IDS') -and $EnvMap['HOSTONLY_VMNET_IDS']) {
     $PreferredIds = $EnvMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) }
