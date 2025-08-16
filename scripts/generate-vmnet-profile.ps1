@@ -3,18 +3,21 @@ param(
     [string]$EnvPath,
     [string]$OutFile,
     [switch]$PassThru,
-    [switch]$CopyToLogs  # optional: snapshot to logs if set
+    [switch]$CopyToLogs
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Get-DotEnvMap([string]$Path){
-    $m=@{}; if(Test-Path $Path){
-        Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
-            if($_ -match '^([^=]+)=(.*)$'){ $m[$matches[1].Trim()]=$matches[2].Trim() }
-        }
-    }; $m
+    if (-not $Path -or -not (Test-Path $Path)) { return @{} }
+    $m=@{}
+    Get-Content $Path | ForEach-Object {
+        if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
+        $k,$v = $_ -split '=',2
+        if ($null -ne $v) { $m[$k.Trim()] = $v.Trim() }
+    }
+    return $m
 }
 function Test-ConditionOrThrow($cond,[string]$msg){ if(-not $cond){ throw $msg } }
 function Test-IPv4Address([string]$ip){
@@ -26,7 +29,7 @@ function Test-IPv4Mask([string]$mask){
     if(-not (Test-IPv4Address $mask)){ return $false }
     $bytes=[Net.IPAddress]::Parse($mask).GetAddressBytes()
     $bits = ($bytes | ForEach-Object { [Convert]::ToString($_,2).PadLeft(8,'0') }) -join ''
-    return ($bits -notmatch '01')
+    return ($bits -notmatch '01')  # all 1s then all 0s
 }
 function Test-Network24([string]$subnet){
     if(-not (Test-IPv4Address $subnet)){ return $false }
@@ -34,37 +37,40 @@ function Test-Network24([string]$subnet){
     return ($oct[3] -eq '0')
 }
 function Get-HostOnlyGatewayIp([string]$subnet){
-    $oct = $subnet -split '\.'; "$($oct[0]).$($oct[1]).$($oct[2]).1"
+    $o = $subnet -split '\.'; "$($o[0]).$($o[1]).$($o[2]).1"
 }
 
-# Resolve install root and defaults
+# Resolve roots
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$envFile  = if($EnvPath){ $EnvPath } elseif (Test-Path (Join-Path $RepoRoot '.env')) { Join-Path $RepoRoot '.env' } elseif (Test-Path (Join-Path $RepoRoot '.env.example')) { Join-Path $RepoRoot '.env.example' } else { $null }
-$envMap   = if($envFile){ Get-DotEnvMap $envFile } else { @{} }
+$EnvFile  = if($EnvPath){ $EnvPath }
+elseif (Test-Path (Join-Path $RepoRoot '.env')) { Join-Path $RepoRoot '.env' }
+elseif (Test-Path (Join-Path $RepoRoot '.env.example')) { Join-Path $RepoRoot '.env.example' }
+else { $null }
+$EnvMap   = if($EnvFile){ Get-DotEnvMap $EnvFile } else { @{} }
 
-$EExists = Test-Path 'E:\'
-$DefaultInstallRoot = $(if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' })
-$InstallRoot = $DefaultInstallRoot
-if ($envMap.ContainsKey('INSTALL_ROOT') -and $envMap['INSTALL_ROOT']) { $InstallRoot = $envMap['INSTALL_ROOT'] }
+$EExists  = Test-Path 'E:\'
+$DefaultInstallRoot = if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
+$InstallRoot = if ($EnvMap['INSTALL_ROOT']) { $EnvMap['INSTALL_ROOT'] } else { $DefaultInstallRoot }
 
 $ProfileDir = Join-Path $InstallRoot 'config\network'
 $LogDir     = Join-Path $InstallRoot 'logs\installation'
 New-Item -ItemType Directory -Force -Path $ProfileDir,$LogDir | Out-Null
 
-# addressing from env or defaults
-$Vmnet8Subnet  = $envMap['VMNET8_SUBNET'];  if(-not $Vmnet8Subnet){  $Vmnet8Subnet  = '192.168.37.0' }
-$Vmnet8Mask    = $envMap['VMNET8_MASK'];    if(-not $Vmnet8Mask){    $Vmnet8Mask    = '255.255.255.0' }
-$Vmnet8HostIp  = $envMap['VMNET8_HOSTIP'];  if(-not $Vmnet8HostIp){  $Vmnet8HostIp  = '192.168.37.1' }
-$Vmnet8Gateway = $envMap['VMNET8_GATEWAY']; if(-not $Vmnet8Gateway){ $Vmnet8Gateway = '192.168.37.2' }
-$HostOnlyMask  = $envMap['HOSTONLY_MASK'];  if(-not $HostOnlyMask){  $HostOnlyMask  = '255.255.255.0' }
-$Vmnet20Subnet = $envMap['VMNET20_SUBNET']; if(-not $Vmnet20Subnet){ $Vmnet20Subnet = '172.22.10.0' }
-$Vmnet21Subnet = $envMap['VMNET21_SUBNET']; if(-not $Vmnet21Subnet){ $Vmnet21Subnet = '172.22.20.0' }
-$Vmnet22Subnet = $envMap['VMNET22_SUBNET']; if(-not $Vmnet22Subnet){ $Vmnet22Subnet = '172.22.30.0' }
-$Vmnet23Subnet = $envMap['VMNET23_SUBNET']; if(-not $Vmnet23Subnet){ $Vmnet23Subnet = '172.22.40.0' }
+# Addressing (env overrides or defaults)
+$Vmnet8Subnet  = $EnvMap['VMNET8_SUBNET'];  if(-not $Vmnet8Subnet){  $Vmnet8Subnet  = '192.168.37.0' }
+$Vmnet8Mask    = $EnvMap['VMNET8_MASK'];    if(-not $Vmnet8Mask){    $Vmnet8Mask    = '255.255.255.0' }
+$Vmnet8HostIp  = $EnvMap['VMNET8_HOSTIP'];  if(-not $Vmnet8HostIp){  $Vmnet8HostIp  = '192.168.37.1' }
+$Vmnet8Gateway = $EnvMap['VMNET8_GATEWAY']; if(-not $Vmnet8Gateway){ $Vmnet8Gateway = '192.168.37.2' }
 
-# validate
-Test-ConditionOrThrow (Test-Network24 $Vmnet8Subnet)      "VMNET8_SUBNET is invalid (must be A.B.C.0)."
-Test-ConditionOrThrow (Test-IPv4Mask $Vmnet8Mask)         "VMNET8_MASK is invalid."
+$HostOnlyMask  = $EnvMap['HOSTONLY_MASK'];  if(-not $HostOnlyMask){  $HostOnlyMask  = '255.255.255.0' }
+$Vmnet20Subnet = $EnvMap['VMNET20_SUBNET']; if(-not $Vmnet20Subnet){ $Vmnet20Subnet = '172.22.10.0' }
+$Vmnet21Subnet = $EnvMap['VMNET21_SUBNET']; if(-not $Vmnet21Subnet){ $Vmnet21Subnet = '172.22.20.0' }
+$Vmnet22Subnet = $EnvMap['VMNET22_SUBNET']; if(-not $Vmnet22Subnet){ $Vmnet22Subnet = '172.22.30.0' }
+$Vmnet23Subnet = $EnvMap['VMNET23_SUBNET']; if(-not $Vmnet23Subnet){ $Vmnet23Subnet = '172.22.40.0' }
+
+# Validate
+Test-ConditionOrThrow (Test-Network24   $Vmnet8Subnet)    "VMNET8_SUBNET is invalid (must be A.B.C.0)."
+Test-ConditionOrThrow (Test-IPv4Mask    $Vmnet8Mask)      "VMNET8_MASK is invalid."
 Test-ConditionOrThrow (Test-IPv4Address $Vmnet8HostIp)    "VMNET8_HOSTIP is invalid."
 Test-ConditionOrThrow (Test-IPv4Address $Vmnet8Gateway)   "VMNET8_GATEWAY is invalid."
 foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
@@ -72,10 +78,8 @@ foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
 }
 Test-ConditionOrThrow (Test-IPv4Mask $HostOnlyMask) "HOSTONLY_MASK is invalid."
 
-# --- Build profile text ---
+# Build vnetlib import text (create things before update)
 $lines = @()
-
-# vmnet8 NAT with DHCP (create things before updating them)
 $lines += @(
     "add adapter vmnet8",
     "add vnet vmnet8",
@@ -90,10 +94,14 @@ $lines += @(
     "update dhcp vmnet8",
     ""
 )
-
-# host-only vmnets (explicitly create adapters)
-foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vmnet22Subnet},@{n=23;s=$Vmnet23Subnet})) {
-    $hn = "vmnet$($def.n)"; $hip = Get-HostOnlyGatewayIp $def.s
+foreach($def in @(
+    @{n=20;s=$Vmnet20Subnet},
+    @{n=21;s=$Vmnet21Subnet},
+    @{n=22;s=$Vmnet22Subnet},
+    @{n=23;s=$Vmnet23Subnet}
+)){
+    $hn  = "vmnet$($def.n)"
+    $hip = Get-HostOnlyGatewayIp $def.s
     $lines += @(
         "add adapter $hn",
         "add vnet $hn",
@@ -104,17 +112,18 @@ foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vm
         ""
     )
 }
-
 $text = ($lines -join "`r`n")
 
-# write canonical profile
-if (-not $OutFile) { $OutFile = Join-Path $ProfileDir 'vmnet-profile.txt' } else {
+# Write canonical profile (InstallRoot\config\network\vmnet-profile.txt)
+if (-not $OutFile) {
+    $OutFile = Join-Path $ProfileDir 'vmnet-profile.txt'
+} else {
     New-Item -ItemType Directory -Force -Path (Split-Path $OutFile -Parent) | Out-Null
 }
 Set-Content -Path $OutFile -Value $text -Encoding ASCII
 Write-Host "VMnet profile written: $OutFile"
 
-# optional snapshot to logs
+# Optional snapshot to logs
 if ($CopyToLogs) {
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
     $logCopy = Join-Path $LogDir "vmnet-profile-$ts.txt"

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$ManualNetwork,      # forces manual editor immediately
-    [string]$ArtifactsDir,       # backward-compat: treated as CONFIG_NETWORK_DIR
+    [switch]$ManualNetwork,      # force manual editor
+    [string]$ArtifactsDir,       # back-compat: treated as CONFIG_NETWORK_DIR
     [string]$IsoDir
 )
 
@@ -55,31 +55,6 @@ function Invoke-IfScriptExists([string]$ScriptPath,[string]$FriendlyName) {
     }
 }
 
-function Start-VMwareNetworkServices {
-    $svcNames = @(
-        @{ Name='VMnetNatSvc'; Display='VMware NAT Service'  },
-        @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
-    )
-    foreach ($s in $svcNames) {
-        $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
-        if (-not $svc) { $svc = Get-Service -DisplayName $s.Display -ErrorAction SilentlyContinue }
-        if ($svc) {
-            try {
-                $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$($svc.Name)'" -ErrorAction SilentlyContinue
-                if ($wmi -and $wmi.StartMode -ne 'Auto') { $null = $wmi.ChangeStartMode('Automatic') }
-            } catch {}
-            if ($svc.Status -ne 'Running') {
-                try { Start-Service -InputObject $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
-                $deadline = (Get-Date).AddSeconds(20)
-                do { Start-Sleep -Milliseconds 500; $svc.Refresh() } while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline)
-            }
-            if ($svc.Status -ne 'Running') { throw "Service '$($svc.Name)' failed to reach Running state." }
-        } else {
-            Write-Warning "VMware service '$($s.Name)' not found."
-        }
-    }
-}
-
 function Get-VNetLibPath {
     foreach ($p in @(
         "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
@@ -113,18 +88,67 @@ function Open-VirtualNetworkEditor {
         throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
     }
     Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
-    Write-Host 'Configure VMnet8 as NAT (DHCP on), and VMnet20-VMnet23 as Host-only (mask 255.255.255.0). Then close the editor.' -ForegroundColor Yellow
+    Write-Host 'Configure VMnet8 as NAT (DHCP on), and leave VMnet1 as-is. Create VMnet20-VMnet23 as Host-only (mask 255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
     Start-Process -FilePath $exe -Wait | Out-Null
 }
 
 function Initialize-VMnetAdapters {
+    # idempotent: code 12 means "already exists"
     param([string[]]$VmnetNames)
     foreach($vm in $VmnetNames){
-        Invoke-VNetLib -CliArgs @('add','adapter',$vm) -AllowedExitCodes @(0,1)
+        Invoke-VNetLib -CliArgs @('add','adapter',$vm) -AllowedExitCodes @(0,1,12)
     }
 }
 
-# --- main ---
+function Start-VMwareNetworkServices {
+    $svcNames = @(
+        @{ Name='VMnetNatSvc'; Display='VMware NAT Service'  },
+        @{ Name='VMnetDHCP';   Display='VMware DHCP Service' }
+    )
+    foreach ($s in $svcNames) {
+        $svc = Get-Service -Name $s.Name -ErrorAction SilentlyContinue
+        if (-not $svc) { $svc = Get-Service -DisplayName $s.Display -ErrorAction SilentlyContinue }
+        if ($svc) {
+            try {
+                $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$($svc.Name)'" -ErrorAction SilentlyContinue
+                if ($wmi -and $wmi.StartMode -ne 'Auto') { $null = $wmi.ChangeStartMode('Automatic') }
+            } catch {}
+            if ($svc.Status -ne 'Running') {
+                try { Start-Service -InputObject $svc -ErrorAction Stop } catch { Write-Warning "Failed to start '$($svc.Name)': $($_.Exception.Message)" }
+                $deadline = (Get-Date).AddSeconds(20)
+                do { Start-Sleep -Milliseconds 500; $svc.Refresh() } while ($svc.Status -ne 'Running' -and (Get-Date) -lt $deadline)
+            }
+            if ($svc.Status -ne 'Running') { throw "Service '$($svc.Name)' failed to reach Running state." }
+        } else {
+            Write-Warning "VMware service '$($s.Name)' not found."
+        }
+    }
+}
+
+# ---------- ISO gating ----------
+
+function Test-IsosReady {
+    param([string]$IsoRoot)
+
+    $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
+    $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
+    $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
+    $nessus  = Get-ChildItem -Path $IsoRoot -Filter '*.deb' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'nessus.*(amd64|x86_64)' } | Select-Object -First 1
+
+    $missing = @()
+    if (-not $ubuntu)  { $missing += 'Ubuntu 22.04 ISO (ubuntu-22.04*.iso)' }
+    if (-not $windows) { $missing += 'Windows 11 ISO' }
+    if (-not $pfsense) { $missing += 'pfSense / Netgate installer ISO' }
+    if (-not $nessus)  { $missing += 'Nessus Essentials .deb' }
+
+    [pscustomobject]@{
+        Ready   = ($missing.Count -eq 0)
+        Missing = $missing
+        Found   = @($ubuntu,$windows,$pfsense,$nessus) | Where-Object { $_ }
+    }
+}
+
+# ---------- main ----------
 
 Start-PwshAdmin
 
@@ -142,19 +166,18 @@ if ($EnvMap.ContainsKey('INSTALL_ROOT') -and $EnvMap['INSTALL_ROOT']) { $Install
 
 # Directories under InstallRoot
 $ConfigNetworkDir = Join-Path $InstallRoot 'config\network'
-$IsoRoot          = Join-Path $InstallRoot 'isos'
+$IsoRoot          = if ($IsoDir) { $IsoDir } else { (Join-Path $InstallRoot 'isos') }
 $LogDir           = Join-Path $InstallRoot 'logs\installation'
 
 # Back-compat overrides
 if ($EnvMap.ContainsKey('CONFIG_NETWORK_DIR') -and $EnvMap['CONFIG_NETWORK_DIR']) { $ConfigNetworkDir = $EnvMap['CONFIG_NETWORK_DIR'] }
 if ($EnvMap.ContainsKey('ISO_DIR') -and $EnvMap['ISO_DIR']) { $IsoRoot = $EnvMap['ISO_DIR'] }
-if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir }  # compat
-if ($PSBoundParameters.ContainsKey('IsoDir') -and $IsoDir) { $IsoRoot = $IsoDir }
+if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir }
 
 # Ensure dirs
 New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir | Out-Null
 
-# Persist keys for future runs
+# Persist keys
 Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
 Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
 Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
@@ -164,20 +187,32 @@ $ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $LogDir "setup-soc9000-$ts.log"
 Start-Transcript -Path $log -Force | Out-Null
 
-# ISOs (informational only)
+# --------- ISO download + HARD CHECK ----------
 Write-Host "`n==== Ensuring ISO downloads ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\download-isos.ps1') -IsoDir $IsoRoot
 if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
 
-Write-Host "`n==== ISO summary (informational) ====" -ForegroundColor Cyan
+Write-Host "`n==== Checking required files ====" -ForegroundColor Cyan
+$check = Test-IsosReady -IsoRoot $IsoRoot
+if (-not $check.Ready) {
+    Write-Host "Missing files:" -ForegroundColor Yellow
+    $check.Missing | ForEach-Object { Write-Host " - $_" -ForegroundColor Yellow }
+    Write-Host ""
+    Write-Host "Please place the missing files into: $IsoRoot" -ForegroundColor Yellow
+    Write-Host "Aborting before host configuration." -ForegroundColor Red
+    Stop-Transcript | Out-Null
+    exit 1
+}
+
+Write-Host "`n==== ISO summary ====" -ForegroundColor Cyan
 Get-ChildItem -Path $IsoRoot -File | Sort-Object Length -Descending | Select-Object Name,Length,LastWriteTime | Format-Table
 
 # =================== NETWORKING ===================
 Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
 
 if ($ManualNetwork) {
-    # Force manual config immediately
     Open-VirtualNetworkEditor
+    Write-Host "Manual network configuration done." -ForegroundColor Green
 } else {
     # 1) Generate profile (canonical path)
     $gen = Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1'
@@ -185,52 +220,33 @@ if ($ManualNetwork) {
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $gen -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env')
     if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
 
-    # 2) Import profile (tolerate 0/1 on stop/import), then start services
+    # 2) Import profile (tolerate 0/1 on stop/import), ensure adapters (0/1/12), start services
     try {
         Invoke-VNetLib -CliArgs @('stop','dhcp')                 -AllowedExitCodes @(0,1)
         Invoke-VNetLib -CliArgs @('stop','nat')                  -AllowedExitCodes @(0,1)
         Invoke-VNetLib -CliArgs @('import',"$profilePath")       -AllowedExitCodes @(0,1)
-        # Ensure adapters exist even if import didn't create them
         Initialize-VMnetAdapters -VmnetNames @('vmnet8','vmnet20','vmnet21','vmnet22','vmnet23')
         Invoke-VNetLib -CliArgs @('start','dhcp')                -AllowedExitCodes @(0,1)
         Invoke-VNetLib -CliArgs @('start','nat')                 -AllowedExitCodes @(0,1)
         Start-VMwareNetworkServices
     } catch {
-        Write-Warning "Automated import failed: $($_.Exception.Message)"
+        Write-Error "Automated network import failed: $($_.Exception.Message)"
+        Write-Host "Aborting. See log at: $log" -ForegroundColor Yellow
+        Stop-Transcript | Out-Null
+        exit 1
     }
 }
 
-# 3) Verify once
+# 3) Verify ONCE; if not OK -> abort (do not continue to WSL)
 Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-$verified = ($LASTEXITCODE -eq 0)
-
-# 3b) If not verified, try one-time device install + adapter ensure, then re-verify
-if (-not $verified -and -not $ManualNetwork) {
-    Write-Warning "Verification failed. Attempting to repair VMware virtual NIC devices and re-verify..."
-    try {
-        Invoke-VNetLib -CliArgs @('install','devices') -AllowedExitCodes @(0,1)
-        Ensure-AdaptersPresent -VmnetNames @('vmnet8','vmnet20','vmnet21','vmnet22','vmnet23')
-    } catch {
-        Write-Warning "Device repair attempt failed: $($_.Exception.Message)"
-    }
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-    $verified = ($LASTEXITCODE -eq 0)
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Networking verification failed. See log at: $log"
+    Stop-Transcript | Out-Null
+    exit 1
 }
 
-# 4) If still not verified, open manual editor and verify again
-if (-not $verified) {
-    Write-Warning "Automated networking did not verify. Opening Virtual Network Editor for manual configuration..."
-    Open-VirtualNetworkEditor
-
-    Write-Host "`n==== Re-verifying networking after manual changes ====" -ForegroundColor Cyan
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-    if ($LASTEXITCODE -ne 0) {
-        throw "verify-networking.ps1 failed after manual configuration. Please review VMnet settings and re-run."
-    }
-}
-
-# =================== NEXT STEPS ===================
+# =================== NEXT STEPS (only reached if verified) ===================
 Write-Host "`n==== Bootstrapping WSL and Ansible ====" -ForegroundColor Cyan
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')         'wsl-prepare.ps1'
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-bootstrap.ps1')       'wsl-bootstrap.ps1'

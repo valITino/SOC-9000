@@ -11,16 +11,16 @@
 
 [CmdletBinding()]
 param(
-    [string]$Vmnet8Subnet = "192.168.37.0",
-    [string]$Vmnet8Mask   = "255.255.255.0",
-    [string]$Vmnet8HostIp = "192.168.37.1",
-    [string]$Vmnet8Gateway= "192.168.37.2",
+    [string]$Vmnet8Subnet   = "192.168.37.0",
+    [string]$Vmnet8Mask     = "255.255.255.0",
+    [string]$Vmnet8HostIp   = "192.168.37.1",
+    [string]$Vmnet8Gateway  = "192.168.37.2",
 
-    [string]$Vmnet20Subnet= "172.22.10.0",
-    [string]$Vmnet21Subnet= "172.22.20.0",
-    [string]$Vmnet22Subnet= "172.22.30.0",
-    [string]$Vmnet23Subnet= "172.22.40.0",
-    [string]$HostOnlyMask = "255.255.255.0",
+    [string]$Vmnet20Subnet  = "172.22.10.0",
+    [string]$Vmnet21Subnet  = "172.22.20.0",
+    [string]$Vmnet22Subnet  = "172.22.30.0",
+    [string]$Vmnet23Subnet  = "172.22.40.0",
+    [string]$HostOnlyMask   = "255.255.255.0",
 
     [switch]$Preview
 )
@@ -28,7 +28,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ---------------- helpers (approved verbs only) ----------------
+# ---------- helpers ----------
 
 function Start-AdminElevation {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -57,44 +57,32 @@ function Set-ValueFromEnv([hashtable]$Map,[string]$Key,[ref]$Target) {
     if ($Map.ContainsKey($Key) -and $Map[$Key]) { $Target.Value = $Map[$Key] }
 }
 
-function Test-ConditionOrThrow($Cond,[string]$Message){
-    if (-not $Cond) { throw $Message }
-}
-
+function Test-ConditionOrThrow($Cond,[string]$Message){ if (-not $Cond) { throw $Message } }
 function Test-IPv4Address([string]$Ip){
     if ($Ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return $false }
-    foreach($oct in $Ip -split '\.'){
-        if([int]$oct -gt 255){ return $false }
-    }
+    foreach($oct in $Ip -split '\.'){ if([int]$oct -gt 255){ return $false } }
     return $true
 }
-
 function Test-IPv4Mask([string]$Mask){
     if (-not (Test-IPv4Address $Mask)) { return $false }
     $bytes=[Net.IPAddress]::Parse($Mask).GetAddressBytes()
     $bits = ($bytes | ForEach-Object { [Convert]::ToString($_,2).PadLeft(8,'0') }) -join ''
-    # valid mask = all 1s then all 0s
     return ($bits -notmatch '01')
 }
-
 function Test-Network24([string]$Subnet){
     if (-not (Test-IPv4Address $Subnet)) { return $false }
     $oct = $Subnet -split '\.'
     return ($oct[3] -eq '0')
 }
-
 function Get-HostOnlyGatewayIp([string]$Subnet){
-    $o = $Subnet -split '\.'
-    return "$($o[0]).$($o[1]).$($o[2]).1"
+    $o = $Subnet -split '\.'; "$($o[0]).$($o[1]).$($o[2]).1"
 }
 
 function Get-VNetLibPath {
     foreach ($p in @(
         "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
         "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
-    )) {
-        if (Test-Path $p) { return $p }
-    }
+    )) { if (Test-Path $p) { return $p } }
     $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     throw "vnetlib64.exe not found. Install VMware Workstation Pro (with Virtual Network Editor)."
@@ -121,7 +109,7 @@ function New-ImportText {
 
     $lines = @()
 
-    # vmnet8: NAT + DHCP (create before update)
+    # vmnet8: NAT + DHCP (create then update)
     $lines += "add adapter vmnet8"
     $lines += "add vnet vmnet8"
     $lines += "set vnet vmnet8 addr $Vmnet8Subnet"
@@ -135,7 +123,7 @@ function New-ImportText {
     $lines += "update dhcp vmnet8"
     $lines += ""
 
-    # host-only vmnets: explicitly create adapters; no DHCP
+    # host-only: adapters created explicitly; no DHCP
     foreach($def in @(
         @{n=20;s=$Vmnet20Subnet},
         @{n=21;s=$Vmnet21Subnet},
@@ -246,12 +234,8 @@ $okLine = ($r.AdapterUp -and $r.ServicesOK -and ($r.ExpectedIP -eq $r.ActualIP))
 $actual = if ($r.ActualIP) { $r.ActualIP } else { "-" }
 $line   = $lineFmt -f $r.VMnet,$r.Type,$r.Subnet,$r.Mask,$r.ExpectedIP,$actual,$svc
 
-if ($okLine) {
-Write-Host $line -ForegroundColor Green
-} else {
-Write-Host $line -ForegroundColor Yellow
-$bad = $true
-}
+if ($okLine) { Write-Host $line -ForegroundColor Green }
+else { Write-Host $line -ForegroundColor Yellow; $bad = $true }
 }
 
 Write-Host "Backup file : $BackupFile"
@@ -263,51 +247,50 @@ throw "One or more checks failed. Validate .env IPs/masks; ensure 'VMware NAT Se
 }
 }
 
-# ---------------- main ----------------
+# ---------- main ----------
 
 Start-AdminElevation
 
-$scriptRoot = Split-Path -Parent $PSCommandPath
-$repoRoot   = (Resolve-Path (Join-Path $scriptRoot '..')).Path
+$ScriptRoot = Split-Path -Parent $PSCommandPath
+$RepoRoot   = (Resolve-Path (Join-Path $ScriptRoot '..')).Path
 
-$eDrive  = Test-Path 'E:\'
-$installDefault = if ($eDrive) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
+$EExists  = Test-Path 'E:\'
+$DefaultInstallRoot = if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
 
-$envMap = Get-DotEnvMap (Join-Path $repoRoot '.env')
-$installRoot = if ($envMap['INSTALL_ROOT']) { $envMap['INSTALL_ROOT'] } else { $installDefault }
+$EnvMap = Get-DotEnvMap (Join-Path $RepoRoot '.env')
+$InstallRoot = if ($EnvMap['INSTALL_ROOT']) { $EnvMap['INSTALL_ROOT'] } else { $DefaultInstallRoot }
 
-$logDir = Join-Path $installRoot 'logs\installation'
-New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$LogDir = Join-Path $InstallRoot 'logs\installation'
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 try { Stop-Transcript | Out-Null } catch {}
 $ts  = Get-Date -Format "yyyyMMdd-HHmmss"
-$log = Join-Path $logDir "configure-vmnet-$ts.log"
+$log = Join-Path $LogDir "configure-vmnet-$ts.log"
 Start-Transcript -Path $log -Force | Out-Null
 
-# Apply .env overrides
-Set-ValueFromEnv $envMap 'VMNET8_SUBNET'   ([ref]$Vmnet8Subnet)
-Set-ValueFromEnv $envMap 'VMNET8_MASK'     ([ref]$Vmnet8Mask)
-Set-ValueFromEnv $envMap 'VMNET8_HOSTIP'   ([ref]$Vmnet8HostIp)
-Set-ValueFromEnv $envMap 'VMNET8_GATEWAY'  ([ref]$Vmnet8Gateway)
-Set-ValueFromEnv $envMap 'VMNET20_SUBNET'  ([ref]$Vmnet20Subnet)
-Set-ValueFromEnv $envMap 'VMNET21_SUBNET'  ([ref]$Vmnet21Subnet)
-Set-ValueFromEnv $envMap 'VMNET22_SUBNET'  ([ref]$Vmnet22Subnet)
-Set-ValueFromEnv $envMap 'VMNET23_SUBNET'  ([ref]$Vmnet23Subnet)
-Set-ValueFromEnv $envMap 'HOSTONLY_MASK'   ([ref]$HostOnlyMask)
+# .env overrides
+Set-ValueFromEnv $EnvMap 'VMNET8_SUBNET'   ([ref]$Vmnet8Subnet)
+Set-ValueFromEnv $EnvMap 'VMNET8_MASK'     ([ref]$Vmnet8Mask)
+Set-ValueFromEnv $EnvMap 'VMNET8_HOSTIP'   ([ref]$Vmnet8HostIp)
+Set-ValueFromEnv $EnvMap 'VMNET8_GATEWAY'  ([ref]$Vmnet8Gateway)
+Set-ValueFromEnv $EnvMap 'VMNET20_SUBNET'  ([ref]$Vmnet20Subnet)
+Set-ValueFromEnv $EnvMap 'VMNET21_SUBNET'  ([ref]$Vmnet21Subnet)
+Set-ValueFromEnv $EnvMap 'VMNET22_SUBNET'  ([ref]$Vmnet22Subnet)
+Set-ValueFromEnv $EnvMap 'VMNET23_SUBNET'  ([ref]$Vmnet23Subnet)
+Set-ValueFromEnv $EnvMap 'HOSTONLY_MASK'   ([ref]$HostOnlyMask)
 
-# Validate inputs
-Test-ConditionOrThrow (Test-Network24 $Vmnet8Subnet)   "VMNET8_SUBNET is invalid (must be A.B.C.0)."
-Test-ConditionOrThrow (Test-IPv4Mask  $Vmnet8Mask)     "VMNET8_MASK is invalid."
-Test-ConditionOrThrow (Test-IPv4Address $Vmnet8HostIp) "VMNET8_HOSTIP is invalid."
-Test-ConditionOrThrow (Test-IPv4Address $Vmnet8Gateway)"VMNET8_GATEWAY is invalid."
+# Validate
+Test-ConditionOrThrow (Test-Network24 $Vmnet8Subnet)    "VMNET8_SUBNET is invalid (must be A.B.C.0)."
+Test-ConditionOrThrow (Test-IPv4Mask  $Vmnet8Mask)      "VMNET8_MASK is invalid."
+Test-ConditionOrThrow (Test-IPv4Address $Vmnet8HostIp)  "VMNET8_HOSTIP is invalid."
+Test-ConditionOrThrow (Test-IPv4Address $Vmnet8Gateway) "VMNET8_GATEWAY is invalid."
 foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
 Test-ConditionOrThrow (Test-Network24 $s) "Host-only subnet '$s' is invalid (must be A.B.C.0)."
 }
 Test-ConditionOrThrow (Test-IPv4Mask $HostOnlyMask) "HOSTONLY_MASK is invalid."
 
-# Build or preview import file
+# Build/preview import
 $importText = New-ImportText -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gateway $Vmnet8Gateway -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
-
 if ($Preview) {
 Write-Host ""
 Write-Host "[Preview only] vnetlib import commands that would be applied:" -ForegroundColor Cyan
@@ -319,30 +302,25 @@ exit 0
 $importFile = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
 Set-Content -Path $importFile -Value $importText -Encoding ASCII
 
-# Backup current profile (warn-only if not possible)
-$backup = Join-Path $logDir "vmnet-backup-$ts.txt"
-try {
-Invoke-VMnet -CliArgs @('export', $backup) -AllowedExitCodes @(0,1)
-} catch {
-Write-Warning "Backup export failed: $($_.Exception.Message)"
-}
+# Backup current profile (warn-only if it fails)
+$backup = Join-Path $LogDir "vmnet-backup-$ts.txt"
+try { Invoke-VMnet -CliArgs @('export',$backup) -AllowedExitCodes @(0,1) } catch { Write-Warning "Backup export failed: $($_.Exception.Message)" }
 
-# Stop -> Import -> Start (tolerate exit code 1)
+# Stop -> Import -> Start (tolerate exit code 1 on stop/import)
 Invoke-VMnet -CliArgs @('stop','dhcp')          -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('stop','nat')           -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('import',"$importFile") -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('start','dhcp')         -AllowedExitCodes @(0,1)
 Invoke-VMnet -CliArgs @('start','nat')          -AllowedExitCodes @(0,1)
 
-# Ensure Windows services are running
+# Start services
 Start-VMwareNetworkServices
 
 # Prune DHCP scopes for host-only nets then bounce DHCP service
 Remove-HostOnlyDhcpScopes @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet) $HostOnlyMask
 try { Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue } catch {}
 
-# Verify + summarize (throw if any check fails)
+# Verify + summarize
 $rows = Test-VmnetState -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet20Subnet $Vmnet20Subnet -Vmnet21Subnet $Vmnet21Subnet -Vmnet22Subnet $Vmnet22Subnet -Vmnet23Subnet $Vmnet23Subnet -HostOnlyMask $HostOnlyMask
-
 Write-VmnetSummary -Rows $rows -BackupFile $backup -ImportFile $importFile
 Stop-Transcript | Out-Null
