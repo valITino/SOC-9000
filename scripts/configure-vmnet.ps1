@@ -3,16 +3,19 @@
   Robust VMware VMnet setup for Workstation Pro 17+ on Windows.
 
 .FLOW
-  - Read .env / defaults (IPv4s + VMnet IDs)
-  - Stop VMware NAT/DHCP (required on some builds)
-  - Ensure VMnet8 + host-only adapters exist (auto-create if missing)
-  - Build and import full profile (vnetlib64)
-  - Start services, force IPv4s, verify
+  - Read .env / defaults (IPv4s + preferred VMnet IDs)
+  - Stop VMware NAT/DHCP (prevents exit 1/12 issues)
+  - Ensure VMnet8 exists
+  - For each host-only subnet: pick a working VMnet ID automatically
+  - Build & import profile (vnetlib64)
+  - Start services, force IPv4s, verify, persist chosen IDs
 
 .ENV (optional)
-  INSTALL_ROOT, HOSTONLY_VMNET_IDS (e.g. 9,10,11,12),
-  VMNET8_SUBNET/VMNET8_MASK/VMNET8_HOSTIP/VMNET8_GATEWAY,
-  VMNET20/21/22/23_SUBNET, HOSTONLY_MASK
+  INSTALL_ROOT
+  HOSTONLY_VMNET_IDS       e.g. 9,10,11,12   (preferred order; auto-fallback if unusable)
+  VMNET8_SUBNET VMNET8_MASK VMNET8_HOSTIP VMNET8_GATEWAY
+  VMNET20_SUBNET VMNET21_SUBNET VMNET22_SUBNET VMNET23_SUBNET
+  HOSTONLY_MASK
 #>
 
 [CmdletBinding()]
@@ -60,6 +63,17 @@ function Read-DotEnv([string]$Path){
 function Set-FromEnv([hashtable]$Map,[string]$Key,[ref]$Target){
     if ($Map.ContainsKey($Key) -and $Map[$Key]) { $Target.Value = $Map[$Key] }
 }
+function Write-EnvKey([string]$File,[string]$Key,[string]$Value){
+    if (-not (Test-Path $File)) { New-Item -ItemType File -Path $File -Force | Out-Null }
+    $lines = Get-Content $File
+    if ($lines -match "^\s*$([regex]::Escape($Key))\s*=") {
+        $updated = $lines | ForEach-Object { if ($_ -match "^\s*$([regex]::Escape($Key))\s*=") { "$Key=$Value" } else { $_ } }
+        Set-Content -Path $File -Value $updated
+    } else {
+        Add-Content -Path $File -Value "$Key=$Value"
+    }
+}
+
 function Test-IPv4Address([string]$Ip){
     if ($Ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { return $false }
     foreach($oct in ($Ip -split '\.')){ if([int]$oct -gt 255){ return $false } }
@@ -97,6 +111,13 @@ function Invoke-VMnet {
     if ($AllowedExitCodes -notcontains $p.ExitCode) {
         throw "vnetlib64 exited $($p.ExitCode): $($CliArgs -join ' ')"
     }
+    return $p.ExitCode
+}
+function Invoke-VMnetCode {
+    param([string[]]$CliArgs)
+    $exe = Get-VNetLibPath
+    $p = Start-Process -FilePath $exe -ArgumentList (@('--') + $CliArgs) -Wait -PassThru
+    return $p.ExitCode
 }
 
 function Convert-MaskToPrefixLength([string]$Mask){
@@ -127,34 +148,56 @@ function Wait-AdapterUp([string]$Alias,[int]$Seconds=10){
 }
 
 function Stop-VMwareNetServices {
-    Invoke-VMnet -CliArgs @('stop','dhcp') -AllowedExitCodes @(0,1)
-    Invoke-VMnet -CliArgs @('stop','nat')  -AllowedExitCodes @(0,1)
+    Invoke-VMnet -CliArgs @('stop','dhcp') -AllowedExitCodes @(0,1) | Out-Null
+    Invoke-VMnet -CliArgs @('stop','nat')  -AllowedExitCodes @(0,1) | Out-Null
 }
 function Start-VMwareNetServices {
-    Invoke-VMnet -CliArgs @('start','dhcp') -AllowedExitCodes @(0,1)
-    Invoke-VMnet -CliArgs @('start','nat')  -AllowedExitCodes @(0,1)
+    Invoke-VMnet -CliArgs @('start','dhcp') -AllowedExitCodes @(0,1) | Out-Null
+    Invoke-VMnet -CliArgs @('start','nat')  -AllowedExitCodes @(0,1) | Out-Null
 }
 
-function New-HostOnlyAdapterIfMissing {
+# Approved-verb rename: Allocate-HostOnlyId -> Get-UsableHostOnlyId
+function Get-UsableHostOnlyId {
     [CmdletBinding()]
-    param([int]$Id,[string]$Subnet,[string]$Mask)
-    $alias = "VMware Network Adapter VMnet$Id"
-    $ad    = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
-    if (-not $ad) {
-        # tolerate 0 (success), 1 (already there on some builds), 12 (busy/exists on others)
-        Invoke-VMnet -CliArgs @('add','adapter',"vmnet$Id") -AllowedExitCodes @(0,1,12)
-        Invoke-VMnet -CliArgs @('add','vnet',"vmnet$Id")    -AllowedExitCodes @(0,1,12)
-        Invoke-VMnet -CliArgs @('set','vnet',"vmnet$Id",'addr',$Subnet)
-        Invoke-VMnet -CliArgs @('set','vnet',"vmnet$Id",'mask',$Mask)
-        Invoke-VMnet -CliArgs @('update','adapter',"vmnet$Id")
-        # wait until Windows publishes the NIC
+    param(
+        [string]$Subnet,
+        [string]$Mask,
+        [int[]]$Preferred,
+        [int[]]$AlreadyUsed
+    )
+
+    $reserved = @(0,1,8) + $AlreadyUsed
+    $existing = (Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                if ($_ -and $_.Name -match 'VMnet(\d+)$') { [int]$Matches[1] }
+            }) | Sort-Object -Unique
+
+    $others = (2..23 | Where-Object { $reserved -notcontains $_ -and $_ -ne 8 -and ($Preferred -notcontains $_) }) |
+            Where-Object { $existing -notcontains $_ }
+    $candidates = @() + $Preferred + $others
+
+    foreach ($id in $candidates) {
+        $alias = "VMware Network Adapter VMnet$id"
+        Invoke-VMnet -CliArgs @('add','adapter',"vmnet$id") -AllowedExitCodes @(0,1,12) | Out-Null
+        Invoke-VMnet -CliArgs @('add','vnet',"vmnet$id")    -AllowedExitCodes @(0,1,12) | Out-Null
+
+        $code1 = Invoke-VMnetCode @('set','vnet',"vmnet$id",'addr',$Subnet)
+        if ($code1 -ne 0) { continue }
+        $code2 = Invoke-VMnetCode @('set','vnet',"vmnet$id",'mask',$Mask)
+        if ($code2 -ne 0) { continue }
+
+        Invoke-VMnet -CliArgs @('update','adapter',"vmnet$id") -AllowedExitCodes @(0,1,12) | Out-Null
+
+        # wait until NIC shows up
         $deadline = (Get-Date).AddSeconds(20)
         do {
             Start-Sleep -Milliseconds 500
             $ad = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
         } while (-not $ad -and (Get-Date) -lt $deadline)
-        if (-not $ad) { throw "VMnet$Id adapter was not created by vnetlib64." }
+        if ($ad) { return $id }
     }
+
+    throw "No usable VMnet ID found for subnet $Subnet/$Mask. Try freeing a slot in Virtual Network Editor."
 }
 
 function Remove-HostOnlyDhcpScopes([string[]]$Subnets,[string]$Mask){
@@ -265,17 +308,17 @@ Set-FromEnv $EnvMap 'VMNET22_SUBNET'  ([ref]$Vmnet22Subnet)
 Set-FromEnv $EnvMap 'VMNET23_SUBNET'  ([ref]$Vmnet23Subnet)
 Set-FromEnv $EnvMap 'HOSTONLY_MASK'   ([ref]$HostOnlyMask)
 
-# host-only IDs from .env or default 9–12
-[int[]]$HostOnlyIds = @()
+# preferred host-only IDs from .env or default 9–12
+[int[]]$PreferredIds = @()
 if ($EnvMap.ContainsKey('HOSTONLY_VMNET_IDS') -and $EnvMap['HOSTONLY_VMNET_IDS']) {
-    $HostOnlyIds = $EnvMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) }
-} else { $HostOnlyIds = 9,10,11,12 }
+    $PreferredIds = $EnvMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) }
+} else { $PreferredIds = 9,10,11,12 }
 
-# validate
-if (-not (Test-Network24   $Vmnet8Subnet)) { throw "VMNET8_SUBNET invalid (A.B.C.0)." }
-if (-not (Test-IPv4Mask    $Vmnet8Mask))   { throw "VMNET8_MASK invalid." }
-if (-not (Test-IPv4Address $Vmnet8HostIp)){ throw "VMNET8_HOSTIP invalid." }
-if (-not (Test-IPv4Address $Vmnet8Gateway)){ throw "VMNET8_GATEWAY invalid." }
+# validate addressing
+if (-not (Test-Network24   $Vmnet8Subnet))   { throw "VMNET8_SUBNET invalid (A.B.C.0)." }
+if (-not (Test-IPv4Mask    $Vmnet8Mask))     { throw "VMNET8_MASK invalid." }
+if (-not (Test-IPv4Address $Vmnet8HostIp))   { throw "VMNET8_HOSTIP invalid." }
+if (-not (Test-IPv4Address $Vmnet8Gateway))  { throw "VMNET8_GATEWAY invalid." }
 foreach($s in @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)){
     if (-not (Test-Network24 $s)) { throw "Host-only subnet '$s' invalid (A.B.C.0)." }
 }
@@ -283,16 +326,16 @@ if (-not (Test-IPv4Mask $HostOnlyMask)) { throw "HOSTONLY_MASK invalid." }
 
 $hostOnlySubnets = @($Vmnet20Subnet,$Vmnet21Subnet,$Vmnet22Subnet,$Vmnet23Subnet)
 
-# --- stop services up-front (prevents exit 12 on some builds) ---
+# --- stop services up-front ---
 Stop-VMwareNetServices
 
 # --- Ensure VMnet8 exists ---
 $natAlias = "VMware Network Adapter VMnet8"
 $natAd    = Get-NetAdapter -Name $natAlias -ErrorAction SilentlyContinue
 if (-not $natAd) {
-    Invoke-VMnet -CliArgs @('add','adapter','vmnet8') -AllowedExitCodes @(0,1,12)
-    Invoke-VMnet -CliArgs @('add','vnet','vmnet8')    -AllowedExitCodes @(0,1,12)
-    Invoke-VMnet -CliArgs @('update','adapter','vmnet8')
+    Invoke-VMnet -CliArgs @('add','adapter','vmnet8') -AllowedExitCodes @(0,1,12) | Out-Null
+    Invoke-VMnet -CliArgs @('add','vnet','vmnet8')    -AllowedExitCodes @(0,1,12) | Out-Null
+    Invoke-VMnet -CliArgs @('update','adapter','vmnet8') -AllowedExitCodes @(0,1,12) | Out-Null
     $deadline = (Get-Date).AddSeconds(10)
     do {
         Start-Sleep -Milliseconds 500
@@ -301,14 +344,18 @@ if (-not $natAd) {
     if (-not $natAd) { throw "VMnet8 adapter was not created by vnetlib64." }
 }
 
-# --- Ensure host-only adapters exist BEFORE import ---
-for ($i=0; $i -lt $hostOnlySubnets.Count; $i++) {
-    New-HostOnlyAdapterIfMissing -Id $HostOnlyIds[$i] -Subnet $hostOnlySubnets[$i] -Mask $HostOnlyMask
+# --- Allocate host-only IDs dynamically (avoid bad slots) ---
+[int[]]$UsedIds = @()
+[int[]]$ChosenIds = @()
+foreach ($s in $hostOnlySubnets) {
+    $id = Get-UsableHostOnlyId -Subnet $s -Mask $HostOnlyMask -Preferred $PreferredIds -AlreadyUsed $UsedIds
+    $UsedIds   += $id
+    $ChosenIds += $id
 }
 
-# Build import (complete desired state)
+# Build import using the **actual** IDs we just chose
 $importText = New-ImportText -Vmnet8Subnet $Vmnet8Subnet -Vmnet8Mask $Vmnet8Mask -Vmnet8HostIp $Vmnet8HostIp -Vmnet8Gateway $Vmnet8Gateway `
-                             -HostOnlySubnets $hostOnlySubnets -HostOnlyMask $HostOnlyMask -Ids $HostOnlyIds
+                             -HostOnlySubnets $hostOnlySubnets -HostOnlyMask $HostOnlyMask -Ids $ChosenIds
 
 if ($Preview) {
     Write-Host "`n[Preview] vnetlib import commands to be applied:" -ForegroundColor Cyan
@@ -320,34 +367,36 @@ if ($Preview) {
 $importFile = Join-Path $env:TEMP "soc9000-vmnet-import.txt"
 Set-Content -Path $importFile -Value $importText -Encoding ASCII
 
-# stop (already stopped) -> import -> start
+# optional backup
 $backup = if ($log) { Join-Path $LogDir "vmnet-backup-$ts.txt" } else { $null }
 try { if ($backup) { Invoke-VMnet -CliArgs @('export',$backup) -AllowedExitCodes @(0,1) } } catch { Write-Warning "Backup export failed: $($_.Exception.Message)" }
 
-Invoke-VMnet -CliArgs @('import',"$importFile") -AllowedExitCodes @(0,1)
+# import and start services
+Invoke-VMnet -CliArgs @('import',"$importFile") -AllowedExitCodes @(0,1) | Out-Null
 Start-VMwareNetServices
 
-# services + IPs
+# services + IPs (force-set IPv4 to avoid APIPA)
 Set-AdapterIPv4 -Alias "VMware Network Adapter VMnet8" -Ip $Vmnet8HostIp -Mask $Vmnet8Mask
 for ($i=0; $i -lt $hostOnlySubnets.Count; $i++) {
-    $id = $HostOnlyIds[$i]
+    $id = $ChosenIds[$i]
     $ip = Get-HostOnlyGatewayIp $hostOnlySubnets[$i]
     Set-AdapterIPv4 -Alias "VMware Network Adapter VMnet$id" -Ip $ip -Mask $HostOnlyMask
 }
 Wait-AdapterUp "VMware Network Adapter VMnet8" 10 | Out-Null
 
-# prune DHCP for host-only scopes and bounce DHCP
+# prune DHCP scopes for host-only nets & bounce DHCP
 Remove-HostOnlyDhcpScopes $hostOnlySubnets $HostOnlyMask
 try { Restart-Service "VMnetDHCP" -ErrorAction SilentlyContinue } catch {}
 
-# verify
+# verify (precompute values to avoid inline-if in hashtables)
 $rows = @()
 
-# NAT row (precompute)
+# NAT row
 $natIP     = (Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet8" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
 $natUpAd   = Get-NetAdapter -Name "VMware Network Adapter VMnet8" -ErrorAction SilentlyContinue
 $natActual = if ($natIP) { $natIP } else { '-' }
 $natIsUp   = ($natUpAd -and $natUpAd.Status -eq 'Up')
+$svcOK     = Test-ServiceHealth
 
 $rows += [pscustomobject]@{
     VMnet      = 'VMnet8'
@@ -357,12 +406,12 @@ $rows += [pscustomobject]@{
     ExpectedIP = $Vmnet8HostIp
     ActualIP   = $natActual
     AdapterUp  = $natIsUp
-    ServicesOK = (Test-ServiceHealth)
+    ServicesOK = $svcOK
 }
 
 # host-only rows
 for ($i=0; $i -lt $hostOnlySubnets.Count; $i++) {
-    $id       = $HostOnlyIds[$i]
+    $id       = $ChosenIds[$i]
     $alias    = "VMware Network Adapter VMnet$id"
     $ad       = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
     $ipObj    = Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -377,9 +426,14 @@ for ($i=0; $i -lt $hostOnlySubnets.Count; $i++) {
         ExpectedIP = (Get-HostOnlyGatewayIp $hostOnlySubnets[$i])
         ActualIP   = $actual
         AdapterUp  = $adIsUp
-        ServicesOK = (Test-ServiceHealth)
+        ServicesOK = $svcOK
     }
 }
 
 Write-VmnetSummary -Rows $rows -BackupFile $backup -ImportFile $importFile
+
+# Persist final IDs to .env so next run reuses them
+$EnvFile = Join-Path $RepoRoot '.env'
+Write-EnvKey -File $EnvFile -Key 'HOSTONLY_VMNET_IDS' -Value ($ChosenIds -join ',')
+
 if (-not $NoTranscript) { Stop-Transcript | Out-Null }
