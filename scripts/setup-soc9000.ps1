@@ -106,14 +106,17 @@ function Invoke-VNetLib {
 
 function Open-VirtualNetworkEditor {
     $candidates = @(
-        "C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe",
-        "C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe"
+        'C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe',
+        'C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe'
     )
     $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $exe) { throw "vmnetcfg.exe (Virtual Network Editor) not found. Please open it from VMware Workstation > Edit > Virtual Network Editor." }
-    Write-Host "Launching Virtual Network Editor... (configure VMnet8 NAT + VMnet20–23 host-only; mask 255.255.255.0)" -ForegroundColor Yellow
-    Write-Host "Close the editor when done to continue." -ForegroundColor Yellow
-    Start-Process -FilePath $exe -Wait
+    if (-not $exe) {
+        throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
+    }
+
+    Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
+    Write-Host 'Configure VMnet8 as NAT (DHCP on), and VMnet20-VMnet23 as Host-only (mask 255.255.255.0). Then close the editor.' -ForegroundColor Yellow
+    Start-Process -FilePath $exe -Wait | Out-Null
 }
 
 # --- main ---
