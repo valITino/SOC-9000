@@ -86,8 +86,12 @@ foreach($def in @(@{n=20;s=$Vmnet20Subnet},@{n=21;s=$Vmnet21Subnet},@{n=22;s=$Vm
 }
 $text = ($lines -join "`r`n")
 $art = $artDir
-if (-not $OutFile) { $OutFile = Join-Path $art 'vmnet-profile.txt' }
-New-Item -ItemType Directory -Force -Path (Split-Path $OutFile -Parent) | Out-Null
+if (-not $OutFile) {
+  New-Item -ItemType Directory -Force -Path $art | Out-Null
+  $OutFile = Join-Path $art 'vmnet-profile.txt'
+} else {
+  New-Item -ItemType Directory -Force -Path (Split-Path $OutFile -Parent) | Out-Null
+}
 Set-Content -Path $OutFile -Value $text -Encoding ASCII
 $logDir = Join-Path $repoRoot 'logs'; New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"; $logCopy = Join-Path $logDir "vmnet-profile-$ts.txt"
