@@ -15,13 +15,16 @@ trap {
   exit 1
 }
 
-function Ensure-Admin {
+function Ensure-AdminPwsh {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $p  = New-Object Security.Principal.WindowsPrincipal $id
-  if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Elevation required. Relaunching as Administrator..." -ForegroundColor Cyan
+  $needsAdmin = -not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  $needsPwsh  = $PSVersionTable.PSVersion.Major -lt 7
+  if ($needsAdmin -or $needsPwsh) {
+    Write-Host "Relaunching in elevated PowerShell 7..." -ForegroundColor Cyan
     $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
-    Start-Process pwsh -Verb RunAs -ArgumentList $args | Out-Null
+    $verb = if ($needsAdmin) { 'RunAs' } else { 'Open' }
+    Start-Process pwsh -Verb $verb -ArgumentList $args | Out-Null
     exit 0
   }
 }
@@ -76,31 +79,54 @@ function Ensure-VMwareNetworkServices {
 
 # --- main ---
 
-Ensure-Admin
+Ensure-AdminPwsh
 
-# Resolve repo root and defaults
+# --- Resolve repo root and defaults (PS5.1-safe, no '??') ---
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $EExists  = Test-Path 'E:\'
 
-$DefaultLabRoot   = if ($EExists) { 'E:\SOC-9000' } else { $RepoRoot }
-$DefaultArtifacts = if ($EExists) { 'E:\SOC-9000\artifacts\network' } else { (Join-Path $RepoRoot 'artifacts\network') }
-$DefaultIsoDir    = if ($EExists) { 'E:\SOC-9000-Install\isos' } else { (Join-Path $RepoRoot 'install\isos') }
+$DefaultLabRoot   = $(if ($EExists) { 'E:\SOC-9000' } else { $RepoRoot })
+$DefaultArtifacts = $(if ($EExists) { 'E:\SOC-9000\artifacts\network' } else { (Join-Path $RepoRoot 'artifacts\network') })
+$DefaultIsoDir    = $(if ($EExists) { 'E:\SOC-9000-Install\isos' } else { (Join-Path $RepoRoot 'install\isos') })
 
-# Parse .env (optional)
+# Read .env (optional)
 $EnvFile = Join-Path $RepoRoot '.env'
 $EnvMap = @{}
 if (Test-Path $EnvFile) {
-  Get-Content $EnvFile | Where-Object { $_ -match '^\s*[^#].+=.+$' } | ForEach-Object {
-    $k,$v = $_ -split '=',2; $EnvMap[$k.Trim()] = $v.Trim()
+  foreach ($line in Get-Content $EnvFile) {
+    if ($line -match '^\s*[^#=\s]+\s*=\s*.+$') {
+      $k,$v = $line -split '=',2
+      $EnvMap[$k.Trim()] = $v.Trim()
+    }
   }
 }
 
-$LabRoot   = $EnvMap['LAB_ROOT']      ?? $DefaultLabRoot
-$Artifacts = $ArtifactsDir ?? ($EnvMap['ARTIFACTS_DIR'] ?? $DefaultArtifacts)
-$IsoRoot   = $IsoDir       ?? ($EnvMap['ISO_DIR']       ?? $DefaultIsoDir)
+# Coalesce without PS7 syntax
+$LabRoot = $DefaultLabRoot
+if ($EnvMap.ContainsKey('LAB_ROOT') -and $EnvMap['LAB_ROOT']) { $LabRoot = $EnvMap['LAB_ROOT'] }
 
-# Ensure dirs exist
+$Artifacts = $DefaultArtifacts
+if ($EnvMap.ContainsKey('ARTIFACTS_DIR') -and $EnvMap['ARTIFACTS_DIR']) { $Artifacts = $EnvMap['ARTIFACTS_DIR'] }
+if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $Artifacts = $ArtifactsDir }
+
+$IsoRoot = $DefaultIsoDir
+if ($EnvMap.ContainsKey('ISO_DIR') -and $EnvMap['ISO_DIR']) { $IsoRoot = $EnvMap['ISO_DIR'] }
+if ($PSBoundParameters.ContainsKey('IsoDir') -and $IsoDir) { $IsoRoot = $IsoDir }
+
+# Ensure dirs
 New-Item -ItemType Directory -Force -Path $LabRoot,$Artifacts,$IsoRoot | Out-Null
+
+# Persist minimal keys back to .env if missing (non-destructive)
+function Set-EnvKeyIfMissing([string]$Key,[string]$Value) {
+  if (-not (Test-Path $EnvFile)) { New-Item -ItemType File -Path $EnvFile -Force | Out-Null }
+  $existing = Get-Content $EnvFile
+  if ($existing -notmatch "^\s*$Key\s*=") {
+    Add-Content -Path $EnvFile -Value "$Key=$Value"
+  }
+}
+Set-EnvKeyIfMissing 'LAB_ROOT'      $LabRoot
+Set-EnvKeyIfMissing 'ARTIFACTS_DIR' $Artifacts
+Set-EnvKeyIfMissing 'ISO_DIR'       $IsoRoot
 
 try { Stop-Transcript | Out-Null } catch {}
 $LogDir = Join-Path $LabRoot 'logs'
@@ -109,6 +135,7 @@ $ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $LogDir "setup-soc9000-$ts.log"
 Start-Transcript -Path $log -Force | Out-Null
 
+# --- ISO step: informational only; no checksum enforcement ---
 Write-Host "`n==== Ensuring ISO downloads ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\download-isos.ps1') -IsoDir $IsoRoot
 if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
