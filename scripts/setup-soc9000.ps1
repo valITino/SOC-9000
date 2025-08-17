@@ -177,17 +177,12 @@ if ($ManualNetwork) {
       -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env') -CopyToLogs
     if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
 
-    # 2) Normalize configure-vmnet.ps1 (guard against encoding/line ending issues)
+    # 2) Call the deterministic configurator ONCE (no -NoTranscript)
     $cfgPath = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
-    Convert-FileToAsciiCrLf $cfgPath
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath -NoTranscript
-
-    # 3) Run the full configure/import which also forces adapter IPs
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath -NoTranscript
+    Convert-FileToAsciiCrLf $cfgPath   # keep if you want the line-ending/encoding guard
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE). Aborting."
-        Stop-Transcript | Out-Null
-        exit 1
+        throw "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE)."
     }
 }
 

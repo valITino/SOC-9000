@@ -200,3 +200,4 @@ Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContin
 
 Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet*" -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Select-Object InterfaceAlias, IPAddress, PrefixLength | Format-Table
+
