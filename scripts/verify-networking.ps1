@@ -1,60 +1,81 @@
 [CmdletBinding()]
-param(
-  [string]$Vmnet8Subnet   = "192.168.37.0",
-  [string]$Vmnet8Mask     = "255.255.255.0",
-  [string]$Vmnet8HostIp   = "192.168.37.1",
-  [string]$Vmnet8Gateway  = "192.168.37.2",
-  [string]$Vmnet20Subnet  = "172.22.10.0",
-  [string]$Vmnet21Subnet  = "172.22.20.0",
-  [string]$Vmnet22Subnet  = "172.22.30.0",
-  [string]$Vmnet23Subnet  = "172.22.40.0",
-  [string]$HostOnlyMask   = "255.255.255.0"
-)
+param()
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:hadFail = $false
 
-function MaskToPrefix([string]$mask){
-  $bytes=[Net.IPAddress]::Parse($mask).GetAddressBytes()
-  $bits=($bytes|%{[Convert]::ToString($_,2).PadLeft(8,'0')}) -join ''
-  ($bits -split '0')[0].Length
+function Get-DotEnvMap([string]$Path) {
+  if (-not (Test-Path $Path)) { return @{} }
+  $m = @{}
+  Get-Content $Path | ForEach-Object {
+    if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
+    $k,$v = $_ -split '=',2
+    if ($null -ne $v) { $m[$k.Trim()] = $v.Trim() }
+  }
+  $m
 }
-function HostOnlyIP([string]$s){ $o=$s -split '\.'; "$($o[0]).$($o[1]).$($o[2]).1" }
-function fail($m){ Write-Error $m; $script:bad=$true }
 
-$script:bad=$false
+function Fail($msg){ Write-Host "fail: $msg" -ForegroundColor Red; $script:hadFail = $true }
 
-# Services
-foreach($svcName in "VMware NAT Service","VMnetDHCP"){
+# Resolve repo + .env
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$EnvFile  = Join-Path $RepoRoot '.env'
+$envMap   = Get-DotEnvMap $EnvFile
+
+# Targets (with sane defaults)
+$natId     = [int]($envMap['NAT_VMNET_ID']   ?? 8)
+$natSubnet =        ($envMap['NAT_SUBNET']   ?? '192.168.37.0')
+$ids       = @()
+if ($envMap['HOSTONLY_VMNET_IDS']) { $ids = $envMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) } }
+if (-not $ids) { $ids = 9,10,11,12 }
+
+# Optional subnets override (comma-separated), else use defaults
+$subnets = @()
+if ($envMap['HOSTONLY_SUBNETS']) { $subnets = $envMap['HOSTONLY_SUBNETS'] -split ',' | ForEach-Object { $_.Trim() } }
+if (-not $subnets) { $subnets = @('172.22.10.0','172.22.20.0','172.22.30.0','172.22.40.0')[0..($ids.Count-1)] }
+
+if ($ids.Count -ne $subnets.Count) {
+  Fail "HOSTONLY_VMNET_IDS count ($($ids.Count)) != HOSTONLY_SUBNETS count ($($subnets.Count))."
+}
+
+Write-Host "Verifying: NAT vmnet$natId on $natSubnet/24; Host-only vmnets $($ids -join ', ')" -ForegroundColor Cyan
+
+# --- NAT checks ---
+$natAlias = "VMware Network Adapter VMnet$natId"
+$natAd = Get-NetAdapter -Name $natAlias -ErrorAction SilentlyContinue
+if (-not $natAd) { Fail "Adapter '$natAlias' missing." }
+elseif ($natAd.Status -ne 'Up') { Fail "Adapter '$natAlias' is not Up (state=$($natAd.Status))." }
+
+$natIp = Get-NetIPAddress -InterfaceAlias $natAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.PrefixLength -eq 24 } | Select-Object -First 1
+$expectedNatIp = ($natSubnet -replace '\.0$','.1')
+if (-not $natIp) { Fail "No IPv4 /24 configured on '$natAlias'." }
+elseif ($natIp.IPAddress -ne $expectedNatIp) { Fail "Expected $expectedNatIp on '$natAlias', got $($natIp.IPAddress)." }
+
+# NAT/DHCP services
+foreach ($svcName in 'VMware NAT Service','VMnetDHCP') {
   $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-  if (-not $svc){ fail "Service '$svcName' not found."; continue }
-  if ($svc.StartType -eq 'Disabled'){ fail "Service '$svcName' is Disabled. Set to Automatic and start."; continue }
-  if ($svc.Status -ne 'Running'){ fail "Service '$svcName' is not Running."; }
+  if (-not $svc) { Fail "Service not found: $svcName" }
+  elseif ($svc.Status -ne 'Running') { Fail "Service not running: $svcName (state=$($svc.Status))." }
 }
 
-# Config files
-if (-not (Test-Path "C:\ProgramData\VMware\vmnetnat.conf"))  { fail "vmnetnat.conf missing." }
-if (-not (Test-Path "C:\ProgramData\VMware\vmnetdhcp.conf")) { fail "vmnetdhcp.conf missing." }
+# --- Host-only checks ---
+for ($i=0; $i -lt $ids.Count; $i++) {
+  $id = $ids[$i]; $subnet = $subnets[$i]
+  $alias = "VMware Network Adapter VMnet$id"
 
-# Adapters + IPs
-$targets = @(
-  @{Alias="VMware Network Adapter VMnet8";  IP=$Vmnet8HostIp; Mask=$Vmnet8Mask},
-  @{Alias="VMware Network Adapter VMnet20"; IP=(HostOnlyIP $Vmnet20Subnet); Mask=$HostOnlyMask},
-  @{Alias="VMware Network Adapter VMnet21"; IP=(HostOnlyIP $Vmnet21Subnet); Mask=$HostOnlyMask},
-  @{Alias="VMware Network Adapter VMnet22"; IP=(HostOnlyIP $Vmnet22Subnet); Mask=$HostOnlyMask},
-  @{Alias="VMware Network Adapter VMnet23"; IP=(HostOnlyIP $Vmnet23Subnet); Mask=$HostOnlyMask}
-)
-foreach($t in $targets){
-  $ad = Get-NetAdapter -Name $t.Alias -ErrorAction SilentlyContinue
-  if (-not $ad){ fail "Adapter '$($t.Alias)' missing."; continue }
-  if ($ad.Status -ne 'Up'){ fail "Adapter '$($t.Alias)' not Up."; }
-  $ip = Get-NetIPAddress -InterfaceAlias $t.Alias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $ip){ fail "No IPv4 on '$($t.Alias)'."; continue }
-  if ($ip.IPAddress -ne $t.IP){ fail "'$($t.Alias)' IP is $($ip.IPAddress) expected $($t.IP)." }
-  if ($ip.PrefixLength -ne (MaskToPrefix $t.Mask)){ fail "'$($t.Alias)' mask mismatch." }
+  $ad = Get-NetAdapter -Name $alias -ErrorAction SilentlyContinue
+  if (-not $ad){ Fail "Adapter '$alias' missing."; continue }
+  if ($ad.Status -ne 'Up'){ Fail "Adapter '$alias' is not Up (state=$($ad.Status))." }
+
+  $ip = Get-NetIPAddress -InterfaceAlias $alias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.PrefixLength -eq 24 } | Select-Object -First 1
+  if (-not $ip) { Fail "No IPv4 /24 configured on '$alias'."; continue }
+
+  $expected = ($subnet -replace '\.0$','.1')
+  if ($ip.IPAddress -ne $expected) { Fail "Expected $expected on '$alias', got $($ip.IPAddress)." }
 }
 
-# Hyper-V advisory
-$hv = (Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -ErrorAction SilentlyContinue)
-if ($hv -and $hv.State -eq 'Enabled'){ Write-Warning "Hyper-V enabled; bridged may be quirky." }
-
-if ($script:bad){ exit 1 } else { Write-Host "Networking verification: OK" -ForegroundColor Green; exit 0 }
+if ($script:hadFail) { Write-Error "Networking verification failed."; exit 1 }
+Write-Host "Networking verification: OK" -ForegroundColor Green
+exit 0

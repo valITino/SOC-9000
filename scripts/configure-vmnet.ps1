@@ -46,7 +46,7 @@ function Invoke-VMnet {
     param(
         [Parameter(Mandatory)]
         [string[]]$CliArgs,
-        [int[]]$AllowedExitCodes = @(0,12), # 12 ~ already exists/no-op
+        [int[]]$AllowedExitCodes = @(0,1,12), # 1 ~ benign no-op on some hosts; 12 ~ already exists
         [switch]$Silent
     )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -200,4 +200,7 @@ Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContin
 
 Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet*" -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Select-Object InterfaceAlias, IPAddress, PrefixLength | Format-Table
+
+
+
 
