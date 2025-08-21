@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
-echo "labadmin ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/99-labadmin > /dev/null
+# Basic health info in the Packer console
+echo "=== OS info ==="
+uname -a
+. /etc/os-release
+echo "ID=$ID VERSION_ID=$VERSION_ID"
 
-sudo apt-get update -y
-sudo DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y
+# Ensure cloud-init finalised + SSH agent is enabled
+systemctl is-active --quiet cloud-init || true
+systemctl enable --now ssh
 
-sudo timedatectl set-timezone Europe/Zurich || true
+# Make sure open-vm-tools/qemu-guest-agent are running
+systemctl enable --now open-vm-tools.service || true
+systemctl enable --now qemu-guest-agent.service || true
 
-sudo systemctl enable --now ssh
-sudo sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-sudo systemctl restart ssh
+# Trim apt cache to shrink artifact
+apt-get -y autoremove || true
+apt-get -y clean || true
+rm -rf /var/lib/apt/lists/* || true
 
-sudo touch /etc/soc-9000.containerhost.built
+echo "postinstall complete."

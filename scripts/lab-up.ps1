@@ -1,9 +1,20 @@
-# End-to-end bring-up for SOC-9000
+# End-to-end bring-up for SOC-9000 (restored full flow + hardened paths)
 $ErrorActionPreference="Stop"; Set-StrictMode -Version Latest
 
+# Always operate from repo root
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+Set-Location $RepoRoot
+
 function Get-DotEnv {
-  param([string]$Path = '.env')
-  if(!(Test-Path $Path)){ throw ".env not found" }
+  param([string]$Path = (Join-Path $RepoRoot '.env'))
+  if(!(Test-Path $Path)){
+    if (Test-Path (Join-Path $RepoRoot '.env.example')) {
+      Copy-Item (Join-Path $RepoRoot '.env.example') $Path -Force
+      throw "Created .env from .env.example. Review it, then re-run."
+    } else {
+      throw ".env not found at $RepoRoot"
+    }
+  }
   $map=@{}
   Get-Content $Path | Where-Object {$_ -and $_ -notmatch '^\s*#'} | ForEach-Object {
     if($_ -match '^([^=]+)=(.*)$'){ $map[$matches[1].Trim()] = $matches[2].Trim() }
@@ -12,37 +23,43 @@ function Get-DotEnv {
 }
 
 function Run($p){
+  $full = (Resolve-Path (Join-Path $RepoRoot $p)).Path
   Write-Host "`n== $p" -ForegroundColor Cyan
-  & pwsh -NoProfile -ExecutionPolicy Bypass -File $p
+  & pwsh -NoProfile -ExecutionPolicy Bypass -File $full
   if ($LASTEXITCODE -ne 0) { throw "Script $p exited with code $LASTEXITCODE" }
 }
 
-# 0) Env + preflight
-if (!(Test-Path '.env')) { Copy-Item .env.example .env -Force; throw "Edit .env then re-run." }
-$envMap = Get-DotEnv '.env'
-foreach($k in 'ISO_DIR','ISO_UBUNTU','ISO_WINDOWS'){
-  if(-not $envMap[$k]){ throw ".env missing $k" }
+function RunIfExists($p,[switch]$Required){
+  $full = Join-Path $RepoRoot $p
+  if (Test-Path $full) { Run $p }
+  elseif ($Required) { throw "Missing required script: $p" }
+  else { Write-Warning "Skipping missing script: $p" }
 }
-$isoDir = $envMap.ISO_DIR
-foreach($f in @($envMap.ISO_UBUNTU,$envMap.ISO_WINDOWS)){
-  if(!(Test-Path (Join-Path $isoDir $f))){ Write-Warning "Missing ISO: $f in $isoDir" }
-}
+
 function Assert-Tool {
   param([string]$Exe,[string]$Hint)
-  try {
-    Get-Command $Exe -ErrorAction Stop | Out-Null
-  } catch {
-    throw "$Exe not found. $Hint"
-  }
+  try { Get-Command $Exe -ErrorAction Stop | Out-Null }
+  catch { throw "$Exe not found. $Hint" }
 }
-Assert-Tool 'packer' 'Install from https://developer.hashicorp.com/packer/downloads or winget install HashiCorp.Packer'
-Assert-Tool 'kubectl' 'Install with: winget install --id Kubernetes.kubectl'
-try { wsl -l -v 2>$null | Out-Null } catch { throw 'WSL not available. Install with: wsl --install -d Ubuntu-22.04' }
+
+function To-WslPath([string]$winPath){
+  $winPath = (Resolve-Path $winPath).Path
+  $drive = $winPath.Substring(0,1).ToLower()
+  $rest  = $winPath.Substring(2).Replace('\','/')
+  return "/mnt/$drive/$rest"
+}
+
+# 0) Env + preflight
+$envMap = Get-DotEnv
+foreach($k in 'ISO_DIR'){ if(-not $envMap[$k]){ throw ".env missing $k" } }
+
+Assert-Tool 'packer'  'Install: winget install HashiCorp.Packer'
+Assert-Tool 'kubectl' 'Install: winget install --id Kubernetes.kubectl'
+try { wsl -l -v 2>$null | Out-Null } catch { throw 'WSL not available. Run: wsl --install -d Ubuntu' }
 
 Write-Host "Preflight checks passed." -ForegroundColor Green
 
-# 1) Host prep (folders, hints)
-Run "scripts/host-prepare.ps1"
+# 1) Host prep (folders, profile to INSTALL_ROOT\config\network)
 
 Write-Host "`nPlanned actions:" -ForegroundColor Cyan
 $check = @(
@@ -61,50 +78,64 @@ $check = @(
 $check | ForEach-Object { Write-Host "  $_" }
 
 # 2) Build base images (container-host, windows victim)
-Run "scripts/build-packer.ps1"
+RunIfExists "scripts/build-packer.ps1" -Required
 
 # 3) Wire VMX networks + static MACs
-Run "orchestration/wire-networks.ps1"
+RunIfExists "orchestration/wire-networks.ps1" -Required
 
 # 4) Apply netplan on ContainerHost (static IPs)
-Run "orchestration/apply-containerhost-netplan.ps1"
+RunIfExists "orchestration/apply-containerhost-netplan.ps1" -Required
 
 Write-Host "`n== pfSense manual install reminder ==" -ForegroundColor Yellow
 Write-Host "Create pfSense VM (5 NICs in order), install from ISO, set admin password, enable SSH."
 Write-Host "Then press Enter to continue ..."
 [void][System.Console]::ReadLine()
 
-# 5) pfSense config + k3s + MetalLB + Portainer
-wsl bash -lc "ansible-playbook -i '/mnt/e/SOC-9000/SOC-9000/ansible/inventory.ini' '/mnt/e/SOC-9000/SOC-9000/ansible/site.yml'"
+# 5) pfSense config + k3s + MetalLB + Portainer (Ansible from repo)
+$inv = To-WslPath (Join-Path $RepoRoot 'ansible\inventory.ini')
+$ply = To-WslPath (Join-Path $RepoRoot 'ansible\site.yml')
+# Ensure ansible present in WSL
+$ansibleOk = $false
+try { wsl -e bash -lc "command -v ansible-playbook >/dev/null" | Out-Null; $ansibleOk = $true } catch {}
+if (-not $ansibleOk) { throw "ansible-playbook not found in WSL. Run scripts\wsl-bootstrap.ps1 first." }
+wsl -e bash -lc "ansible-playbook -i '$inv' '$ply'"
 
 # 6) TLS (wildcard) + platform apps
-Run "scripts/gen-ssl.ps1"
-Run "scripts/apply-k8s.ps1"
+RunIfExists "scripts/gen-ssl.ps1" -Required
+RunIfExists "scripts/apply-k8s.ps1" -Required
 
 # 7) Wazuh
-Run "scripts/wazuh-vendor-and-deploy.ps1"
+RunIfExists "scripts/wazuh-vendor-and-deploy.ps1" -Required
 
 # 8) TheHive + Cortex (RWX storage then apps)
-Run "scripts/install-rwx-storage.ps1"
-Run "scripts/install-thehive-cortex.ps1"
-Run "scripts/storage-defaults-reset.ps1"
+RunIfExists "scripts/install-rwx-storage.ps1" -Required
+RunIfExists "scripts/install-thehive-cortex.ps1" -Required
+RunIfExists "scripts/storage-defaults-reset.ps1" -Required
 
 # 9) Nessus (choose container or VM based on .env)
-$envBlock = Get-Content .env | ? {$_ -and $_ -notmatch '^\s*#'}
+$envBlock = Get-Content (Join-Path $RepoRoot '.env') | ? {$_ -and $_ -notmatch '^\s*#'}
 $mode = ($envBlock | ? { $_ -match '^NESSUS_MODE=' }) -replace '^NESSUS_MODE=',''
 if (!$mode) { $mode = "docker-first" }
 if ($mode -eq "docker-first") {
-  Run "scripts/deploy-nessus-essentials.ps1"
+  RunIfExists "scripts/deploy-nessus-essentials.ps1" -Required
 } else {
-  Run "scripts/nessus-vm-build-and-config.ps1"
+  RunIfExists "scripts/nessus-vm-build-and-config.ps1" -Required
 }
 
 # 10) Expose Wazuh for agents + telemetry bootstrap (pfSense syslog, agents, Atomic, CALDERA)
-Run "scripts/expose-wazuh-manager.ps1"
-Run "scripts/telemetry-bootstrap.ps1"
+RunIfExists "scripts/expose-wazuh-manager.ps1" -Required
+RunIfExists "scripts/telemetry-bootstrap.ps1" -Required
 
 # 11) Final hosts refresh + status
-Run "scripts/hosts-refresh.ps1"
-Run "scripts/lab-status.ps1"
+RunIfExists "scripts/hosts-refresh.ps1" -Required
+RunIfExists "scripts/lab-status.ps1" -Required
+
+# Mark readiness for the top-level wrapper (respect INSTALL_ROOT from .env)
+if (-not $envMap -or -not $envMap['INSTALL_ROOT']) {
+  throw ".env missing INSTALL_ROOT (lab-up.ps1)"
+}
+$StateDir = Join-Path $envMap['INSTALL_ROOT'] 'state'
+New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+Set-Content -Path (Join-Path $StateDir 'lab-ready.txt') -Value (Get-Date).ToString('s')
 
 Write-Host "`nAll done. Open README URLs." -ForegroundColor Green

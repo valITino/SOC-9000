@@ -12,6 +12,12 @@ variable "iso_path" {
   default = "E:/SOC-9000/isos/win11-eval.iso"
 }
 
+# NEW: where to put the built VM (outside the repo)
+variable "output_dir" {
+  type    = string
+  default = "E:/SOC-9000-Install/VMs/Windows"
+}
+
 variable "vm_name" {
   type    = string
   default = "victim-win"
@@ -38,22 +44,33 @@ variable "memory_mb" {
 }
 
 source "vmware-iso" "win11" {
-  vm_name              = var.vm_name
-  iso_url              = var.iso_path
-  iso_checksum         = "none"
+  vm_name                = var.vm_name
+  iso_url                = var.iso_path
+  iso_checksum           = "none"
 
-  headless             = true
-  cpus                 = var.cpus
-  memory               = var.memory_mb
-  disk_size            = var.disk_size_mb
-  network_adapter_type = "vmxnet3"
+  # NEW: use EFI for Win11
+  firmware               = "efi"
 
-  communicator         = "winrm"
-  winrm_username       = "Administrator"
-  winrm_password       = var.admin_password
-  winrm_timeout        = "6h"
-  winrm_insecure       = true
-  winrm_use_ssl        = false
+  headless               = true
+  cpus                   = var.cpus
+  memory                 = var.memory_mb
+  disk_size              = var.disk_size_mb
+  network_adapter_type   = "vmxnet3"
+
+  # NEW: be explicit about NAT on vmnet8
+  vmx_data = {
+    "ethernet0.connectionType" = "nat"
+  }
+
+  # NEW: write artifacts outside the repo
+  output_directory       = var.output_dir
+
+  communicator           = "winrm"
+  winrm_username         = "Administrator"
+  winrm_password         = var.admin_password
+  winrm_timeout          = "6h"
+  winrm_insecure         = true
+  winrm_use_ssl          = false
 
   floppy_files = [
     "${path.root}/answer/Autounattend.xml",
@@ -61,7 +78,7 @@ source "vmware-iso" "win11" {
     "${path.root}/scripts/disable-sleep.ps1"
   ]
 
-  shutdown_command     = "shutdown /s /t 10 /f"
+  shutdown_command       = "shutdown /s /t 10 /f"
 }
 
 build {

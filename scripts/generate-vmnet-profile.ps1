@@ -44,10 +44,10 @@ $LogDir       = Join-Path $InstallRoot 'logs\installation'
 New-Item -ItemType Directory -Force -Path $ProfileDir,$LogDir | Out-Null
 
 # Addresses (env overrides)
-$Vmnet8Subnet  = if ($envMap['VMNET8_SUBNET'])  { $envMap['VMNET8_SUBNET'] }  else { '192.168.37.0' }
+$Vmnet8Subnet  = if ($envMap['VMNET8_SUBNET'])  { $envMap['VMNET8_SUBNET'] }  else { '192.168.186.0' }
 $Vmnet8Mask    = if ($envMap['VMNET8_MASK'])    { $envMap['VMNET8_MASK'] }    else { '255.255.255.0' }
-$Vmnet8HostIp  = if ($envMap['VMNET8_HOSTIP'])  { $envMap['VMNET8_HOSTIP'] }  else { '192.168.37.1' }
-$Vmnet8Gateway = if ($envMap['VMNET8_GATEWAY']) { $envMap['VMNET8_GATEWAY'] } else { '192.168.37.2' }
+$Vmnet8HostIp  = if ($envMap['VMNET8_HOSTIP'])  { $envMap['VMNET8_HOSTIP'] }  else { '192.168.186.1' }
+$Vmnet8Gateway = if ($envMap['VMNET8_GATEWAY']) { $envMap['VMNET8_GATEWAY'] } else { '192.168.186.2' }
 
 $HostOnlyMask  = if ($envMap['HOSTONLY_MASK'])  { $envMap['HOSTONLY_MASK'] }  else { '255.255.255.0' }
 $Vmnet20Subnet = if ($envMap['VMNET20_SUBNET']) { $envMap['VMNET20_SUBNET'] } else { '172.22.10.0' }

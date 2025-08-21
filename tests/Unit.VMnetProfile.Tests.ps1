@@ -7,10 +7,10 @@ Describe "VMnet profile generator" -Tag 'unit' {
     $gen  = Join-Path $repo 'scripts/generate-vmnet-profile.ps1'
     $tmpEnv = Join-Path ([IO.Path]::GetTempPath()) 'soc9000-test.env'
     @"
-VMNET8_SUBNET=192.168.37.0
+VMNET8_SUBNET=192.168.186.0
 VMNET8_MASK=255.255.255.0
-VMNET8_HOSTIP=192.168.37.1
-VMNET8_GATEWAY=192.168.37.2
+VMNET8_HOSTIP=192.168.186.1
+VMNET8_GATEWAY=192.168.186.2
 VMNET20_SUBNET=172.22.10.0
 VMNET21_SUBNET=172.22.20.0
 VMNET22_SUBNET=172.22.30.0
@@ -21,10 +21,10 @@ HOSTONLY_MASK=255.255.255.0
     $text = . $gen -EnvPath $tmpEnv -OutFile $out -PassThru
     $expected = @"
 add vnet vmnet8
-set vnet vmnet8 addr 192.168.37.0
+set vnet vmnet8 addr 192.168.186.0
 set vnet vmnet8 mask 255.255.255.0
-set adapter vmnet8 addr 192.168.37.1
-set nat vmnet8 internalipaddr 192.168.37.2
+set adapter vmnet8 addr 192.168.186.1
+set nat vmnet8 internalipaddr 192.168.186.2
 update adapter vmnet8
 update nat vmnet8
 update dhcp vmnet8

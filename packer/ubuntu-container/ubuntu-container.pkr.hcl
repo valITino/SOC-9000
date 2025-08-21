@@ -7,75 +7,102 @@ packer {
   }
 }
 
+# ---------- Variables ----------
 variable "iso_path" {
   type    = string
-  default = "E:/SOC-9000/isos/ubuntu-22.04.iso"
+  default = "E:/SOC-9000-Install/isos/ubuntu-22.04.iso"
 }
-
 variable "ssh_username" {
   type    = string
   default = "labadmin"
 }
-
-variable "ssh_password" {
+variable "ssh_private_key_file" {
   type    = string
-  default = "ChangeMe_S0C9000!"
+  default = "E:/SOC-9000-Install/keys/id_ed25519"
 }
-
+variable "output_dir" {
+  type    = string
+  default = "E:/SOC-9000-Install/VMs"
+}
 variable "vm_name" {
   type    = string
   default = "container-host"
 }
-
 variable "disk_size_mb" {
-  type    = number
-  default = 100000
+type = number
+default = 100000
+}
+variable "cpus"{
+type = number
+default = 6
+}
+variable "memory_mb"{
+type = number
+default = 16384
 }
 
-variable "cpus" {
-  type    = number
-  default = 6
-}
+# Bind the HTTP seed server to the host IP on VMnet8 (passed by the build script)
+variable "vmnet8_host_ip" { type = string }
 
-variable "memory_mb" {
-  type    = number
-  default = 16384
-}
-
+# ---------- Builder ----------
 source "vmware-iso" "ubuntu2204" {
-  vm_name              = var.vm_name
-  iso_url              = var.iso_path
-  iso_checksum         = "none"
+  vm_name                  = var.vm_name
+  iso_url                  = var.iso_path
+  iso_checksum             = "none"                     # (optionally set a real sha256)
 
-  headless             = true
-  http_directory       = "${path.root}/http"
+  firmware                 = "bios"
+  headless                 = true
 
-  communicator         = "ssh"
-  ssh_username         = var.ssh_username
-  ssh_password         = var.ssh_password
-  ssh_timeout          = "40m"
+  # Serve NoCloud seed over HTTP from the repo's http/ folder
+  http_directory           = "${path.root}/http"
+  http_bind_address        = var.vmnet8_host_ip
+  http_port_min            = 8800
+  http_port_max            = 8800
 
-  cpus                 = var.cpus
-  memory               = var.memory_mb
-  disk_size            = var.disk_size_mb
-  network_adapter_type = "vmxnet3"
+  communicator             = "ssh"
+  ssh_username             = var.ssh_username
+  ssh_private_key_file     = var.ssh_private_key_file
+  ssh_timeout              = "60m"
+  ssh_handshake_attempts   = 200
 
-  boot_wait            = "5s"
+  cpus                     = var.cpus
+  memory                   = var.memory_mb
+  disk_size                = var.disk_size_mb
+  network_adapter_type     = "e1000e"
+  network                  = "nat"
+
+  # Put the VM under INSTALL_ROOT\VMs\<vm_name>
+  output_directory         = "${var.output_dir}/${var.vm_name}"
+
+  vmx_data = {
+    "bios.bootDelay" = "3000"
+  }
+
+  # Robust GRUB edit (no quotes; slower typing)
+  boot_wait         = "28s"
+  boot_key_interval = "90ms"
   boot_command = [
-    "<esc><esc><enter><wait>",
-    "/casper/vmlinuz ",
-    "autoinstall ds=nocloud-net\\;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/ ",
-    "initrd=/casper/initrd ",
-    "-- <enter>"
+    "<esc><esc><wait>",
+    "e<wait>",
+
+    # Then go down 3 lines and back up 1 → reliably lands on the 'linux' line
+    "<down><down><down><end>",
+
+    # Append to the *same* linux line (no newline!)
+    " autoinstall net.ifnames=0 biosdevname=0 ip=dhcp ds='nocloud-net;s=http://${var.vmnet8_host_ip}:8800/'",
+
+    "<f10>"
   ]
 
-  shutdown_command = "echo '${var.ssh_password}' | sudo -S shutdown -P now"
+  shutdown_command = "sudo shutdown -P now"
 }
 
+# ---------- Build ----------
 build {
   sources = ["source.vmware-iso.ubuntu2204"]
 
   provisioner "shell" {
-    script = "${path.root}/scripts/postinstall.sh"
+    script          = "${path.root}/scripts/postinstall.sh"
+    execute_command = "chmod +x {{ .Path }}; sudo /bin/bash '{{ .Path }}'"
   }
 }

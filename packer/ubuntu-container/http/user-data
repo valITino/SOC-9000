@@ -1,25 +1,27 @@
 #cloud-config
 autoinstall:
   version: 1
-  locale: en_US
-  keyboard: { layout: us }
   identity:
     hostname: containerhost
     username: labadmin
-    password: "ChangeMe_S0C9000!"
+    # required by autoinstall; SSH password login stays OFF
+    password: "$6$soc9000salt$3lw9WQteXTDh5dcIhNazz8ZsD8q5n59ReX.Jo2x96nLbu2tH5cMHSdrJNSDIWlfKRQzQJua4JXF0CwprHLBQh0"
   ssh:
     install-server: true
-  packages:
-    - openssh-server
-    - open-vm-tools
-    - qemu-guest-agent
-    - curl
-    - ca-certificates
-    - jq
-    - net-tools
-    - nfs-common
-  storage:
-    layout:
-      name: direct
-  late-commands:
-    - curtin in-target --target=/target -- systemctl enable qemu-guest-agent || true
+    allow-pw: false
+  user-data:
+    users:
+      - name: labadmin
+        ssh_authorized_keys:
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDuGOaENVxlnCCcMBXffelKrmpBRi6jrCt1w4/s2tH+f liamo@CrHackHead
+        groups: [sudo]
+        shell: /bin/bash
+        sudo: ALL=(ALL) NOPASSWD:ALL
+    package_update: true
+    package_upgrade: true
+    packages:
+      - qemu-guest-agent
+      - open-vm-tools
+    runcmd:
+      - systemctl enable --now qemu-guest-agent
+      - systemctl enable --now ssh

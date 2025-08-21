@@ -29,6 +29,12 @@ function Start-PwshAdmin {
     }
 }
 
+# One-shot resume task cleanup (if we came back after reboot)
+try {
+    $t = Get-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -ErrorAction SilentlyContinue
+    if ($t) { Unregister-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Confirm:$false }
+} catch {}
+
 function Get-DotEnvMap([string]$Path) {
     if (-not (Test-Path $Path)) { return @{} }
     $m = @{}
@@ -46,13 +52,58 @@ function Set-EnvKeyIfMissing([string]$Key,[string]$Value) {
     if ($existing -notmatch "^\s*$Key\s*=") { Add-Content -Path $EnvFile -Value "$Key=$Value" }
 }
 
-function Invoke-IfScriptExists([string]$ScriptPath,[string]$FriendlyName) {
-    if (Test-Path $ScriptPath) {
-        Write-Host ("Running {0} ..." -f $FriendlyName)
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Verbose
-        if ($LASTEXITCODE -ne 0) { throw ("{0} exited with code {1}" -f $FriendlyName,$LASTEXITCODE) }
-        Write-Host ("{0}: OK" -f $FriendlyName) -ForegroundColor Green
+function Invoke-IfScriptExists(
+    [string]$ScriptPath,
+    [string]$FriendlyName,
+    [int[]]$AllowedExitCodes = @(0),
+    [int[]]$RebootExitCodes  = @(2),
+    [switch]$AutoResume
+) {
+    if (-not (Test-Path $ScriptPath)) { return }
+
+    function Register-ResumeTask {
+        param([string[]]$ExtraArgs)
+        try {
+            $existing = Get-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -ErrorAction SilentlyContinue
+            if ($existing) { Unregister-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Confirm:$false }
+            $action  = New-ScheduledTaskAction -Execute 'pwsh.exe' `
+                -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`" {1}" -f $PSCommandPath, ($ExtraArgs -join ' '))
+            $trigger = New-ScheduledTaskTrigger -AtLogOn
+            $principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType InteractiveToken -RunLevel Highest
+            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                        -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 120)
+            Register-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Action $action -Trigger $trigger `
+                -Principal $principal -Settings $settings | Out-Null
+        } catch {
+            throw "Failed to register resume task: $($_.Exception.Message)"
+        }
     }
+
+    Write-Host ("Running {0} ..." -f $FriendlyName)
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Verbose
+    $code = $LASTEXITCODE
+
+    if ($RebootExitCodes -contains $code) {
+        if ($AutoResume) {
+            Register-ResumeTask -ExtraArgs $MyInvocation.UnboundArguments
+            try { Stop-Transcript | Out-Null } catch {}
+            Write-Warning ("{0} requested a reboot (exit code {1}). Rebooting now and will automatically resume..." -f $FriendlyName,$code)
+            Restart-Computer -Force
+            Start-Sleep -Seconds 2
+            exit 0
+        } else {
+            Write-Warning ("{0} requested a reboot (exit code {1}). Please reboot, then rerun setup." -f $FriendlyName,$code)
+            try { Stop-Transcript | Out-Null } catch {}
+            Read-Host 'Press ENTER to exit' | Out-Null
+            exit 0
+        }
+    }
+
+    if ($AllowedExitCodes -notcontains $code) {
+        throw ("{0} exited with code {1}" -f $FriendlyName,$code)
+    }
+
+    Write-Host ("{0}: OK" -f $FriendlyName) -ForegroundColor Green
 }
 
 function Get-VNetLibPath {
@@ -75,7 +126,7 @@ function Open-VirtualNetworkEditor {
         throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
     }
     Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
-    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet20-VMnet23 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
+    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet9–VMnet12 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
     Start-Process -FilePath $exe -Wait | Out-Null
 }
 
@@ -86,58 +137,40 @@ function Convert-FileToAsciiCrLf([string]$Path) {
     Set-Content -Path $Path -Value $clean -Encoding Ascii
 }
 
-# ---------- ISO gating ----------
-function Test-IsosReady {
-    param([string]$IsoRoot)
-
-    $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
-    $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
-    $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
-    $nessus  = Get-ChildItem -Path $IsoRoot -Filter '*.deb' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'nessus.*(amd64|x86_64)' } | Select-Object -First 1
-
-    $missing = @()
-    if (-not $ubuntu)  { $missing += 'Ubuntu 22.04 ISO (ubuntu-22.04*.iso)' }
-    if (-not $windows) { $missing += 'Windows 11 ISO' }
-    if (-not $pfsense) { $missing += 'pfSense / Netgate installer ISO' }
-    if (-not $nessus)  { $missing += 'Nessus Essentials .deb' }
-
-    [pscustomobject]@{
-        Ready   = ($missing.Count -eq 0)
-        Missing = $missing
-        Found   = @($ubuntu,$windows,$pfsense,$nessus) | Where-Object { $_ }
-    }
+function Resolve-InstallRoot([hashtable]$EnvMap) {
+    if ($EnvMap['INSTALL_ROOT']) { return $EnvMap['INSTALL_ROOT'] }
+    if (Test-Path 'E:\') { return 'E:\SOC-9000-Install' }
+    Write-Warning "E:\ not found; falling back to C:\SOC-9000-Install"
+    return (Join-Path $env:SystemDrive 'SOC-9000-Install')
 }
 
 # ---------- main ----------
-
 Start-PwshAdmin
 
-# Resolve repo root and install root
+# Repo + .env
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$EExists  = Test-Path 'E:\'
-$DefaultInstallRoot = if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $env:SystemDrive 'SOC-9000-Install' }
+$EnvFile  = Join-Path $RepoRoot '.env'
+$EnvMap   = Get-DotEnvMap $EnvFile
 
-# .env
-$EnvFile = Join-Path $RepoRoot '.env'
-$EnvMap  = Get-DotEnvMap $EnvFile
+# Resolve roots (ENV > E:\ > C:\)
+$InstallRoot = Resolve-InstallRoot $EnvMap
 
-# Install-root derived paths (with env/param overrides)
-$InstallRoot = if ($EnvMap['INSTALL_ROOT']) { $EnvMap['INSTALL_ROOT'] } else { $DefaultInstallRoot }
-
+# Derived paths (ENV overrides still respected)
 $ConfigNetworkDir = if ($EnvMap['CONFIG_NETWORK_DIR']) { $EnvMap['CONFIG_NETWORK_DIR'] } else { Join-Path $InstallRoot 'config\network' }
 if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir } # back-compat
 
 $IsoRoot = if ($IsoDir) { $IsoDir } elseif ($EnvMap['ISO_DIR']) { $EnvMap['ISO_DIR'] } else { Join-Path $InstallRoot 'isos' }
-
 $LogDir  = Join-Path $InstallRoot 'logs\installation'
+$StateDir= Join-Path $InstallRoot 'state'
 
 # Ensure dirs
-New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir,$StateDir | Out-Null
 
-# Persist keys back to .env if missing
+# Persist keys back to .env if missing (so next run is deterministic)
 Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
 Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
 Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
+Set-EnvKeyIfMissing 'HOSTONLY_VMNET_IDS' '9,10,11,12'
 
 # Transcript
 try { Stop-Transcript | Out-Null } catch {}
@@ -151,6 +184,23 @@ Write-Host "`n==== Ensuring ISO downloads ====" -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
 
 Write-Host "`n==== Checking required files ====" -ForegroundColor Cyan
+function Test-IsosReady {
+    param([string]$IsoRoot)
+    $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
+    $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
+    $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
+    $nessus  = Get-ChildItem -Path $IsoRoot -Filter '*.deb' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'nessus.*(amd64|x86_64)' } | Select-Object -First 1
+    $missing = @()
+    if (-not $ubuntu)  { $missing += 'Ubuntu 22.04 ISO (ubuntu-22.04*.iso)' }
+    if (-not $windows) { $missing += 'Windows 11 ISO' }
+    if (-not $pfsense) { $missing += 'pfSense / Netgate installer ISO' }
+    if (-not $nessus)  { $missing += 'Nessus Essentials .deb' }
+    [pscustomobject]@{
+        Ready   = ($missing.Count -eq 0)
+        Missing = $missing
+        Found   = @($ubuntu,$windows,$pfsense,$nessus) | Where-Object { $_ }
+    }
+}
 $check = Test-IsosReady -IsoRoot $IsoRoot
 if (-not $check.Ready) {
     Write-Host "Missing files:" -ForegroundColor Yellow
@@ -167,42 +217,41 @@ Get-ChildItem -Path $IsoRoot -File | Sort-Object Length -Descending | Select-Obj
 
 # =================== NETWORKING ===================
 Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
-
 if ($ManualNetwork) {
     Open-VirtualNetworkEditor
 } else {
-    # 1) Always generate canonical profile for audit
     $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
     & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1') `
       -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env') -CopyToLogs
     if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
 
-    # 2) Call the deterministic configurator ONCE (no -NoTranscript)
     $cfgPath = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
-    Convert-FileToAsciiCrLf $cfgPath   # keep if you want the line-ending/encoding guard
+    Convert-FileToAsciiCrLf $cfgPath
     & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE)."
-    }
+    if ($LASTEXITCODE -ne 0) { throw "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE)." }
 }
 
-# 4) Verify ONCE; if not OK -> abort (do not continue to WSL)
 Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
 & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Networking verification failed. See log at: $log"
-    Stop-Transcript | Out-Null
-    exit 1
-}
+if ($LASTEXITCODE -ne 0) { Write-Error "Networking verification failed. See log at: $log"; Stop-Transcript | Out-Null; exit 1 }
 
-# =================== NEXT STEPS (only reached if verified) ===================
+# =================== WSL + LAB ===================
 Write-Host "`n==== Bootstrapping WSL and Ansible ====" -ForegroundColor Cyan
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')         'wsl-prepare.ps1'
+Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')         'wsl-prepare.ps1' -AllowedExitCodes @(0) -RebootExitCodes @(2) -AutoResume
+Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-init-user.ps1')       'wsl-init-user.ps1' -AllowedExitCodes @(0)
+Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\copy-ssh-key-to-wsl.ps1') 'copy-ssh-key-to-wsl.ps1' -AllowedExitCodes @(0)
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-bootstrap.ps1')       'wsl-bootstrap.ps1'
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\copy-ssh-key-to-wsl.ps1') 'copy-ssh-key-to-wsl.ps1'
+
 Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\lab-up.ps1')              'lab-up.ps1'
 
+# Final banner reflects actual state flag under INSTALL_ROOT
+$ReadyFlag = Join-Path $StateDir 'lab-ready.txt'
 Write-Host ""
-Write-Host 'All requested steps completed.' -ForegroundColor Green
+if (Test-Path $ReadyFlag) {
+    Write-Host 'All requested steps completed.' -ForegroundColor Green
+} else {
+    Write-Host 'Host/WSL prep completed; lab build steps may still be in progress/pending.' -ForegroundColor Yellow
+    Write-Host 'See lab-up.ps1 output for details.' -ForegroundColor Yellow
+}
 Stop-Transcript | Out-Null
 Read-Host 'Press ENTER to exit' | Out-Null

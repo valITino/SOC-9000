@@ -1,2 +1,3 @@
-instance-id: containerhost
+instance-id: iid-ubuntu-container
 local-hostname: containerhost
+

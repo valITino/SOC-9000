@@ -25,7 +25,7 @@ $envMap   = Get-DotEnvMap $EnvFile
 
 # Targets (with sane defaults)
 $natId     = [int]($envMap['NAT_VMNET_ID']   ?? 8)
-$natSubnet =        ($envMap['NAT_SUBNET']   ?? '192.168.37.0')
+$natSubnet =        ($envMap['NAT_SUBNET']   ?? '192.168.186.0')
 $ids       = @()
 if ($envMap['HOSTONLY_VMNET_IDS']) { $ids = $envMap['HOSTONLY_VMNET_IDS'] -split ',' | ForEach-Object { [int]($_.Trim()) } }
 if (-not $ids) { $ids = 9,10,11,12 }
@@ -52,11 +52,23 @@ $expectedNatIp = ($natSubnet -replace '\.0$','.1')
 if (-not $natIp) { Fail "No IPv4 /24 configured on '$natAlias'." }
 elseif ($natIp.IPAddress -ne $expectedNatIp) { Fail "Expected $expectedNatIp on '$natAlias', got $($natIp.IPAddress)." }
 
-# NAT/DHCP services
+# NAT/DHCP services (auto-heal: set Automatic + start if stopped)
 foreach ($svcName in 'VMware NAT Service','VMnetDHCP') {
   $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-  if (-not $svc) { Fail "Service not found: $svcName" }
-  elseif ($svc.Status -ne 'Running') { Fail "Service not running: $svcName (state=$($svc.Status))." }
+  if (-not $svc) {
+    Fail "Service not found: $svcName"
+    continue
+  }
+
+  if ($svc.StartType -ne 'Automatic') {
+    try { Set-Service -Name $svcName -StartupType Automatic -ErrorAction Stop } 
+    catch { Fail "Could not set $svcName StartupType=Automatic: $($_.Exception.Message)"; continue }
+  }
+
+  if ($svc.Status -ne 'Running') {
+    try { Start-Service -Name $svcName -ErrorAction Stop } 
+    catch { Fail "Service not running: $svcName (state=$($svc.Status)); start failed: $($_.Exception.Message)" }
+  }
 }
 
 # --- Host-only checks ---

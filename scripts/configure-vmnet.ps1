@@ -13,7 +13,7 @@
 param(
     [switch]$Preview,
     [bool]$PruneExtras = $true,
-    [string]$NatSubnet = "192.168.37.0",
+    [string]$NatSubnet = "192.168.186.0",
     [int[]]$HostOnlyIds,
     [string[]]$HostOnlySubnets
 )
@@ -32,11 +32,15 @@ if (-not (Test-Admin)) {
 $ErrorActionPreference = 'Stop'
 
 function Get-VNetLibPath {
-    $p = "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
-    if (-not (Test-Path $p)) {
-        throw "vnetlib64.exe not found at '$p' (Install VMware Workstation Pro)."
+    foreach ($p in @(
+        "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
+        "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
+    )) {
+        if (Test-Path $p) { return $p }
     }
-    return $p
+    $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+."
 }
 
 $VNET = Get-VNetLibPath
@@ -83,7 +87,9 @@ function Wait-VMnetAdapterUp {
         $ad = Get-NetAdapter -Name $Alias -ErrorAction SilentlyContinue
     } while (-not $ad -and (Get-Date) -lt $deadline)
     if (-not $ad) { throw "Adapter '$Alias' not found after create/update." }
-    if ($ad.Status -ne 'Up') { Enable-NetAdapter -Name $Alias -Confirm:$false -ErrorAction SilentlyContinue | Out-Null }
+    if ($ad.Status -ne 'Up') {
+        Enable-NetAdapter -Name $Alias -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+    }
 }
 
 function Set-VMnetNAT {
@@ -170,6 +176,16 @@ if ($Preview) {
     exit 0
 }
 
+function Ensure-VMwareServices {
+  foreach ($svc in 'VMware NAT Service','VMnetDHCP') {
+    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($s) {
+      if ($s.StartType -ne 'Automatic') { Set-Service -Name $svc -StartupType Automatic -ErrorAction SilentlyContinue }
+      if ($s.Status -ne 'Running')      { Start-Service -Name $svc -ErrorAction SilentlyContinue }
+    }
+  }
+}
+
 # 1) Ensure NAT on vmnet8
 Set-VMnetNAT -Subnet $NatSubnet
 
@@ -194,12 +210,66 @@ for ($i=0; $i -lt $HostOnlyIds.Count; $i++) {
     Set-VMnetHostOnly -Id $HostOnlyIds[$i] -Subnet $HostOnlySubnets[$i]
 }
 
+Ensure-VMwareServices
+
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue |
-        Sort-Object Name | Select-Object Name, Status, MacAddress | Format-Table
+    Sort-Object Name | Select-Object Name, Status, MacAddress | Format-Table
 
 Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet*" -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Select-Object InterfaceAlias, IPAddress, PrefixLength | Format-Table
+    Select-Object InterfaceAlias, IPAddress, PrefixLength | Format-Table
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
