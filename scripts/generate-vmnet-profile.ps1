@@ -38,7 +38,9 @@ $envFile  = if ($EnvPath) { $EnvPath } elseif (Test-Path (Join-Path $RepoRoot '.
 $envMap   = if ($envFile) { Read-DotEnv $envFile } else { @{} }
 
 $EExists      = Test-Path 'E:\'
-$InstallRoot  = if ($envMap['INSTALL_ROOT']) { $envMap['INSTALL_ROOT'] } else { if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path ${env:SystemDrive} 'SOC-9000-Install' } }
+$sysDrive = $env:SystemDrive
+if (-not $sysDrive) { $sysDrive = '/' }
+$InstallRoot  = if ($envMap['INSTALL_ROOT']) { $envMap['INSTALL_ROOT'] } else { if ($EExists) { 'E:\SOC-9000-Install' } else { Join-Path $sysDrive 'SOC-9000-Install' } }
 $ProfileDir   = Join-Path $InstallRoot 'config\network'
 $LogDir       = Join-Path $InstallRoot 'logs\installation'
 New-Item -ItemType Directory -Force -Path $ProfileDir,$LogDir | Out-Null

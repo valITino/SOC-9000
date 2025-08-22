@@ -50,7 +50,10 @@
     {{ (lookup('env','NESSUS_ADMIN_USER') | default('')) | length > 0 and
        (lookup('env','NESSUS_ADMIN_PASS') | default('')) | length > 0 }}
   ansible.builtin.shell: |
-    /opt/nessus/sbin/nessuscli adduser --login {{ lookup('env','NESSUS_ADMIN_USER') }} --password {{ lookup('env','NESSUS_ADMIN_PASS') }} --admin yes <<EOF
+    /opt/nessus/sbin/nessuscli adduser \
+      --login {{ lookup('env','NESSUS_ADMIN_USER') }} \
+      --password {{ lookup('env','NESSUS_ADMIN_PASS') }} \
+      --admin yes <<EOF
     y
     EOF
   args:
