@@ -5,11 +5,23 @@ param(
   [string]$Only,
   [int]$UbuntuMaxMinutes  = 45,
   [int]$WindowsMaxMinutes = 120,
-  [switch]$Headless
+  [switch]$Headless,
+  [switch]$Gui
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Pinpoint any parameter-binding or runtime errors
+trap {
+  $inv = $_.InvocationInfo
+  Write-Host "`n[ERR] $($inv.MyCommand) :: $($_.Exception.Message)" -ForegroundColor Red
+  if ($inv.PositionMessage) { Write-Host $inv.PositionMessage -ForegroundColor DarkGray }
+  throw
+}
+
+# Disable colored output globally for all subcommands (avoids '-color' flag issue)
+$env:PACKER_NO_COLOR = '1'
 
 # --------------------- UX ---------------------
 function Write-Info([string]$m){ Write-Host "[> ] $m" -ForegroundColor Cyan }
@@ -38,11 +50,15 @@ function Assert-Tool([string]$exe,[string]$hint){
   catch { Write-Fail "$exe not found. $hint"; exit 2 }
 }
 
-function Assert-Exists([string]$p,[string]$label){ if(!(Test-Path -LiteralPath $p)){ throw "$label not found: $p" } }
+function Assert-Exists([string]$p,[string]$label){
+  if(!(Test-Path -LiteralPath $p)){ throw "$label not found: $p" }
+}
 
 function New-Directory([string]$path){
   if (-not $path) { return }
-  if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
+  if (-not (Test-Path -LiteralPath $path)) {
+    New-Item -ItemType Directory -Path $path -Force | Out-Null
+  }
 }
 
 function Find-Iso([string]$dir,[string[]]$patterns){
@@ -60,9 +76,9 @@ function Find-PackerExe {
     $cands += (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\packer.exe')
     $cands += (Join-Path $env:LOCALAPPDATA 'HashiCorp\Packer\packer.exe')
   }
-  if ($env:ProgramFiles) { $cands += (Join-Path $env:ProgramFiles 'HashiCorp\Packer\packer.exe') }
+  if ($env:ProgramFiles)        { $cands += (Join-Path $env:ProgramFiles        'HashiCorp\Packer\packer.exe') }
   if (${env:ProgramFiles(x86)}) { $cands += (Join-Path ${env:ProgramFiles(x86)} 'HashiCorp\Packer\packer.exe') }
-  if ($env:ChocolateyInstall) { $cands += (Join-Path $env:ChocolateyInstall 'bin\packer.exe') }
+  if ($env:ChocolateyInstall)   { $cands += (Join-Path $env:ChocolateyInstall   'bin\packer.exe') }
   $cands += 'C:\ProgramData\chocolatey\bin\packer.exe'
 
   foreach ($p in $cands | Where-Object { $_ }) {
@@ -98,7 +114,10 @@ function Show-Stage([string]$log,[datetime]$start,[int]$max){
     @{N='Shutdown';            P='Gracefully|Stopping|Powering off'},
     @{N='Artifact complete';   P='Builds finished|Artifact'}
   )
-  $text = (Test-Path -LiteralPath $log) ? ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
+  $text = ''
+  if (Test-Path -LiteralPath $log) {
+    $text = ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n")
+  }
   $done = 0; foreach($s in $stages){ if($text -match $s.P){ $done++ } }
   $pct = [int](($done / $stages.Count) * 100)
   $elapsed = (Get-Date)-$start
@@ -106,7 +125,7 @@ function Show-Stage([string]$log,[datetime]$start,[int]$max){
   Write-Progress -Activity "Packer build" -Status ("Elapsed {0:hh\:mm\:ss} / {1:hh\:mm}" -f $elapsed,$limit) -PercentComplete $pct
 
   if ($text) {
-    $last = ((($text -split "`n") | Select-Object -Last 10) -join "`n")
+    $last  = ((($text -split "`n") | Select-Object -Last 10) -join "`n")
     $since = ((Get-Date) - $script:_lastTailAt).TotalSeconds
     if ($last -ne $script:_lastTail -and $since -ge 20) {
       Write-Host "`n--- packer tail ---`n$last`n--------------------"
@@ -160,8 +179,7 @@ $LogDir = Join-Path $InstallRoot 'logs\packer'
 New-Directory $LogDir
 function New-LogFile([string]$name){
   $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $lf = Join-Path $LogDir ("{0}-{1}.log" -f $name,$stamp)
-  return $lf
+  Join-Path $LogDir ("{0}-{1}.log" -f $name,$stamp)
 }
 
 # Stable Packer cache
@@ -212,33 +230,34 @@ autoinstall:
   ssh:
     install-server: true
     allow-pw: false
-  user-data:
-    users:
-      - name: labadmin
-        ssh_authorized_keys:
-          - __PUBKEY__
-        groups: [sudo]
-        shell: /bin/bash
-        sudo: ALL=(ALL) NOPASSWD:ALL
-    package_update: true
-    package_upgrade: true
-    packages:
-      - qemu-guest-agent
-      - open-vm-tools
-    runcmd:
-      - systemctl enable --now qemu-guest-agent
-      - systemctl enable --now ssh
+  packages:
+    - open-vm-tools
+    - qemu-guest-agent
+  late-commands:
+    # Ensure SSH + QGA are enabled in the *installed* system
+    - curtin in-target --target=/target -- systemctl enable --now ssh
+    - curtin in-target --target=/target -- systemctl enable --now qemu-guest-agent
+
+    # Install your key for labadmin with correct perms (idempotent)
+    - curtin in-target --target=/target -- bash -c "install -d -m 700 -o labadmin -g labadmin /home/labadmin/.ssh"
+    - curtin in-target --target=/target -- bash -c "grep -qxF '__PUBKEY__' /home/labadmin/.ssh/authorized_keys 2>/dev/null || echo '__PUBKEY__' >> /home/labadmin/.ssh/authorized_keys"
+    - curtin in-target --target=/target -- bash -c "chown -R labadmin:labadmin /home/labadmin/.ssh && chmod 600 /home/labadmin/.ssh/authorized_keys"
+
+    # Make sudo passwordless so Packer shell provisioners won't hang
+    - curtin in-target --target=/target -- bash -c "echo 'labadmin ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/90-labadmin && chmod 440 /etc/sudoers.d/90-labadmin"
 '@
 $ud = $ud.Replace('__PUBKEY__', $pub)
 $ud = $ud -replace "`r",""
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText((Join-Path $SeedDir 'user-data'), $ud, $utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path $SeedDir 'meta-data'), "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n", $utf8NoBom)
+
 Set-Content -LiteralPath (Join-Path $SeedDir 'user-data') -Value $ud -Encoding UTF8 -NoNewline
 Set-Content -LiteralPath (Join-Path $SeedDir 'meta-data') -Value "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n" -Encoding UTF8
 
 # ISOs
 $IsoRoot = $envMap['ISO_DIR']
-if (-not $IsoRoot) {
-  $IsoRoot = Join-Path $InstallRoot 'isos'
-}
+if (-not $IsoRoot) { $IsoRoot = Join-Path $InstallRoot 'isos' }
 New-Directory $IsoRoot
 
 $isoUbuntuName  = $envMap['ISO_UBUNTU'];  $isoUbuntu  = $null
@@ -276,7 +295,7 @@ if (-not $Vmnet8Host -and ($Only -eq 'ubuntu' -or -not $Only)) {
 try {
   New-NetFirewallRule -DisplayName "Packer HTTP Any (8800)" -Direction Inbound -Action Allow `
     -Protocol TCP -LocalPort 8800 -Profile Private -ErrorAction Stop | Out-Null
-} catch { } # ignore exists
+} catch { } # ignore exists/non-admin
 
 # Output dirs
 $VmRoot     = Join-Path $InstallRoot 'VMs'
@@ -285,12 +304,23 @@ $WindowsOut = Join-Path $VmRoot 'Windows'
 New-Directory $UbuntuOut
 New-Directory $WindowsOut
 
-# ---------- Common run helpers ----------
-function Invoke-PackerInit([string]$tpl,[string]$log){
-  $tplDir = Split-Path -LiteralPath $tpl -Parent
-  $args   = @('init','-color=false',(Split-Path -Leaf $tpl))
-  Write-Info ("RUN: init {0}" -f $tpl)
+# ---------- Runtime headless preference (CLI > ENV > HCL default) ----------
+if ($PSBoundParameters.ContainsKey('Headless') -and $PSBoundParameters.ContainsKey('Gui')) {
+  throw "Specify only one of -Headless or -Gui."
+}
+$HeadlessPref = $null
+if     ($PSBoundParameters.ContainsKey('Headless')) { $HeadlessPref = $true }
+elseif ($PSBoundParameters.ContainsKey('Gui'))      { $HeadlessPref = $false }
+elseif ($env:PACKER_HEADLESS) {
+  try { $HeadlessPref = [System.Convert]::ToBoolean($env:PACKER_HEADLESS) } catch {}
+}
 
+# ---------- Packer run helpers ----------
+function Invoke-PackerInit([string]$tpl,[string]$log){
+  $tplDir  = [System.IO.Path]::GetDirectoryName($tpl)
+  $tplLeaf = [System.IO.Path]::GetFileName($tpl)
+  $args    = @('init', $tplLeaf)
+  Write-Info ("RUN: init {0}" -f $tpl)
   Push-Location $tplDir
   try {
     & $PackerExe @args 2>&1 | Tee-Object -FilePath $log -Append
@@ -302,12 +332,12 @@ function Invoke-PackerInit([string]$tpl,[string]$log){
 }
 
 function Invoke-PackerValidate([string]$tpl,[string]$log,[hashtable]$vars){
-  $tplDir = Split-Path -LiteralPath $tpl -Parent
-  $args   = @('validate','-color=false')
+  $tplDir  = [System.IO.Path]::GetDirectoryName($tpl)
+  $tplLeaf = [System.IO.Path]::GetFileName($tpl)
+  $args    = @('validate')
   foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
-  $args  += (Split-Path -Leaf $tpl)
+  $args += $tplLeaf
   Write-Info ("RUN: validate {0}" -f $tpl)
-
   Push-Location $tplDir
   try {
     & $PackerExe @args 2>&1 | Tee-Object -FilePath $log -Append
@@ -322,18 +352,19 @@ function Invoke-PackerBuild([string]$tpl,[string]$log,[hashtable]$vars,[int]$max
   $env:PACKER_LOG      = '1'
   $env:PACKER_LOG_PATH = $log
 
-  $args = @('build','-timestamp-ui','-color=false','-force')
-  foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
-  $args += (Split-Path -Leaf $tpl)
+  $tplDir  = [System.IO.Path]::GetDirectoryName($tpl)
+  $tplLeaf = [System.IO.Path]::GetFileName($tpl)
 
-  # PS 5.1: -ArgumentList must be a single string
+  $args = @('build','-timestamp-ui','-force')
+  foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
+  $args += $tplLeaf
+
+  # PS 5.1: -ArgumentList must be ONE string
   $argStr = ($args | ForEach-Object {
     if ($_ -match '[\s"`]') { '"' + ($_ -replace '"','\"') + '"' } else { $_ }
   }) -join ' '
 
-  $tplDir = Split-Path -LiteralPath $tpl -Parent
   Write-Info ("RUN: build {0}" -f $tpl)
-
   $p = Start-Process -FilePath $PackerExe -ArgumentList $argStr -PassThru -WorkingDirectory $tplDir
 
   $start = Get-Date
@@ -347,7 +378,10 @@ function Invoke-PackerBuild([string]$tpl,[string]$log,[hashtable]$vars,[int]$max
     try { $p.Refresh() } catch {}
   }
   if ($p.ExitCode -ne 0) {
-    $tail = (Test-Path -LiteralPath $log) ? ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
+    $tail = ''
+    if (Test-Path -LiteralPath $log) {
+      $tail = ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n")
+    }
     if ($tail -match '(?i)build was cancelled|received interrupt') {
       Write-Warn "Packer reported a cancellation. Auto-retrying once in 10s (log: $log)..."
       Start-Sleep -Seconds 10
@@ -365,14 +399,14 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
   $logU = New-LogFile 'ubuntu'
   Write-Info ("Ubuntu build log: {0}" -f $logU)
 
-  # variables for HCL — DO NOT send 'headless' unless -Headless was passed (respect HCL default)
   $varsU = @{
     iso_path             = $isoUbuntu
     ssh_private_key_file = $KeyPath
     output_dir           = $UbuntuOut
     vmnet8_host_ip       = $Vmnet8Host
+    ssh_username         = 'labadmin'
   }
-  if ($Headless) { $varsU['headless'] = 'true' }
+  if ($HeadlessPref -ne $null) { $varsU['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
 
   Invoke-PackerInit     $Utpl $logU
   Invoke-PackerValidate $Utpl $logU $varsU
@@ -389,7 +423,7 @@ if ($Only -eq 'windows' -or -not $Only) {
     iso_path   = $isoWindows
     output_dir = $WindowsOut
   }
-  if ($Headless) { $varsW['headless'] = 'true' } # harmless if template ignores
+  if ($HeadlessPref -ne $null) { $varsW['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
 
   Invoke-PackerInit     $Wtpl $logW
   Invoke-PackerValidate $Wtpl $logW $varsW

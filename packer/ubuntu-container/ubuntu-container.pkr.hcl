@@ -43,7 +43,7 @@ default = 16384
 
 variable "headless" {
 type = bool
-default = true # preserves your current 'headless' default
+default = false # preserves your current 'headless' default
 }
 
 # Bind the HTTP seed server to the host IP on VMnet8 (passed by the build script)
@@ -57,7 +57,6 @@ source "vmware-iso" "ubuntu2204" {
 
   firmware                 = "bios"
   headless                 = var.headless
-  vnc_disable_password     = true
   vnc_bind_address         = "127.0.0.1"
   vnc_port_min             = 5901
   vnc_port_max             = 5901
@@ -72,7 +71,7 @@ source "vmware-iso" "ubuntu2204" {
   communicator             = "ssh"
   ssh_username             = var.ssh_username
   ssh_private_key_file     = var.ssh_private_key_file
-  ssh_timeout              = "60m"
+  ssh_timeout              = "30m"
   ssh_handshake_attempts   = 200
 
   cpus                     = var.cpus
@@ -86,11 +85,6 @@ source "vmware-iso" "ubuntu2204" {
 
   vmx_data = {
     "bios.bootDelay" = "3000"
-    "msg.autoanswer"             = "TRUE"     # auto-dismiss "moved/copied" & similar prompts
-    "RemoteDisplay.vnc.enabled"  = "TRUE"     # force VNC even if Workstation hesitates
-    "RemoteDisplay.vnc.port"     = "5901"
-    "RemoteDisplay.vnc.password" = ""         # blank password since packer connects locally
-    "RemoteDisplay.vnc.autoport" = "FALSE"
   }
 
   # Robust GRUB edit (no quotes; slower typing)

@@ -8,19 +8,18 @@ autoinstall:
   ssh:
     install-server: true
     allow-pw: false
-  user-data:
-    users:
-      - name: labadmin
-        ssh_authorized_keys:
-          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5soJ6TP+ly7X17yzKhygY3aEboWkftGmpa6yqE0Ske liamo@CrHackHead
-        groups: [sudo]
-        shell: /bin/bash
-        sudo: ALL=(ALL) NOPASSWD:ALL
-    package_update: true
-    package_upgrade: true
-    packages:
-      - qemu-guest-agent
-      - open-vm-tools
-    runcmd:
-      - systemctl enable --now qemu-guest-agent
-      - systemctl enable --now ssh
+  packages:
+    - open-vm-tools
+    - qemu-guest-agent
+  late-commands:
+    # Ensure SSH + QGA are enabled in the *installed* system
+    - curtin in-target --target=/target -- systemctl enable --now ssh
+    - curtin in-target --target=/target -- systemctl enable --now qemu-guest-agent
+
+    # Install your key for labadmin with correct perms (idempotent)
+    - curtin in-target --target=/target -- bash -c "install -d -m 700 -o labadmin -g labadmin /home/labadmin/.ssh"
+    - curtin in-target --target=/target -- bash -c "grep -qxF 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+7N6kIUhnys4Odq75mBe/K2XEFXWBA1ivMo97JhN86 liamo@CrHackHead' /home/labadmin/.ssh/authorized_keys 2>/dev/null || echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+7N6kIUhnys4Odq75mBe/K2XEFXWBA1ivMo97JhN86 liamo@CrHackHead' >> /home/labadmin/.ssh/authorized_keys"
+    - curtin in-target --target=/target -- bash -c "chown -R labadmin:labadmin /home/labadmin/.ssh && chmod 600 /home/labadmin/.ssh/authorized_keys"
+
+    # Make sudo passwordless so Packer shell provisioners won't hang
+    - curtin in-target --target=/target -- bash -c "echo 'labadmin ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/90-labadmin && chmod 440 /etc/sudoers.d/90-labadmin"
