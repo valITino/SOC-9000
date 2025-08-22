@@ -5,7 +5,8 @@ param(
     [string]$IsoDir,
     [switch]$AutoPartitionE,
     [switch]$Headless,
-    [switch]$SkipPrereqs   # internal: used when we relaunch into PS7 after installing it
+    [switch]$Gui,
+    [switch]$SkipPrereqs
 )
 
 Set-StrictMode -Version Latest
@@ -57,6 +58,22 @@ function Get-PreferredShellExe {
 }
 
 Ensure-Admin-CurrentHost
+
+function Ask-HeadlessChoice {
+  do {
+    Write-Host ''
+    Write-Host 'Build display mode:' -ForegroundColor Cyan
+    Write-Host '  [G] UI (show VMware console during install)' -ForegroundColor Gray
+    Write-Host '  [H] Headless (no GUI)' -ForegroundColor Gray
+    $ans = Read-Host 'Choose (G/h)'; if (-not $ans) { $ans = 'G' }
+    switch -regex ($ans.Trim()) {
+      '^(g|gui)$'      { return $false } # GUI -> headless = $false
+      '^(h|headless)$' { return $true  } # headless = $true
+      default          { Write-Host 'Please enter G or H.' -ForegroundColor Yellow }
+    }
+  } while ($true)
+}
+
 
 # -------------------- Paths / Logs --------------------
 $ScriptRoot = Split-Path -Parent $PSCommandPath
@@ -229,16 +246,34 @@ if (-not (Test-Path (Join-Path $SshDir 'id_ed25519')) -and -not (Test-Path (Join
 # =====================================================================
 # Step 6 - Build (Ubuntu first)
 # =====================================================================
-Banner 'Step 6 of 6 - Build Lab (Ubuntu First)' 'Shows VMware UI if your Packer template supports headless=false.'
+Banner 'Step 6 of 6 - Build Lab (Ubuntu First)' 'Shows VMware UI if headless=false.'
 New-Item -ItemType Directory -Force -Path $PackerLogDir | Out-Null
 $UbuntuLog = Join-Path $PackerLogDir ('ubuntu-{0}.log' -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
 
-# Tell build script what we want (string "true"/"false", not boolean)
-$env:PACKER_HEADLESS = if ($Headless) { 'true' } else { 'false' }
+# Decide headless mode (your code)
+$headlessFinal = $null
+if     ($Headless -and -not $Gui) { $headlessFinal = $true  }
+elseif ($Gui      -and -not $Headless) { $headlessFinal = $false }
+else   { $headlessFinal = Ask-HeadlessChoice }
 
-Line ('Starting Ubuntu build; logging to: {0}' -f $UbuntuLog) 'step'
-& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\build-packer.ps1') -Only ubuntu -Headless:$Headless -Verbose *>&1 | Tee-Object -FilePath $UbuntuLog
+$env:PACKER_HEADLESS = if ($headlessFinal) { 'true' } else { 'false' }
+$bpSwitches = if ($headlessFinal) { @('-Headless') } else { @('-Gui') }
+
+# Build a clean native-args array for pwsh/powershell
+$bpFile = Join-Path $RepoRoot 'scripts\build-packer.ps1'
+$argsBp = @(
+  '-NoProfile','-ExecutionPolicy','Bypass',
+  '-File', $bpFile,
+  '-Only','ubuntu'
+) + $bpSwitches + @('-Verbose')
+
+Line ("Starting Ubuntu build in {0} mode; logging to: {1}" -f ($(if($headlessFinal){'HEADLESS'}else{'GUI'}), $UbuntuLog)) 'step'
+
+# Invoke with array; do redirection outside the arg list
+& $Shell @argsBp 2>&1 | Tee-Object -FilePath $UbuntuLog
+
 if ($LASTEXITCODE -ne 0) { throw ('Ubuntu build failed. See {0}' -f $UbuntuLog) }
+
 Line 'Ubuntu build completed.' 'ok'
 
 # -------------------- Credential Summary --------------------

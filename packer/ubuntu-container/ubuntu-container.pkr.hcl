@@ -58,9 +58,6 @@ source "vmware-iso" "ubuntu2204" {
   firmware                 = "bios"
   headless                 = var.headless
   vnc_bind_address         = "127.0.0.1"
-  vnc_port_min             = 5901
-  vnc_port_max             = 5901
-  guest_os_type            = "ubuntu-64"
 
   # Serve NoCloud seed over HTTP from the repo's http/ folder
   http_directory           = "${path.root}/http"
@@ -71,8 +68,8 @@ source "vmware-iso" "ubuntu2204" {
   communicator             = "ssh"
   ssh_username             = var.ssh_username
   ssh_private_key_file     = var.ssh_private_key_file
-  ssh_timeout              = "30m"
-  ssh_handshake_attempts   = 200
+  ssh_timeout              = "60m"
+  ssh_handshake_attempts   = 500
 
   cpus                     = var.cpus
   memory                   = var.memory_mb
@@ -88,8 +85,8 @@ source "vmware-iso" "ubuntu2204" {
   }
 
   # Robust GRUB edit (no quotes; slower typing)
-  boot_wait         = "28s"
-  boot_key_interval = "90ms"
+  boot_wait         = "20s"
+  boot_key_interval = "70ms"
   boot_command = [
     "<esc><esc><wait>",
     "e<wait>",

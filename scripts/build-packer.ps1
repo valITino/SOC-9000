@@ -218,42 +218,7 @@ $SeedDir = Join-Path $RepoRoot 'packer\ubuntu-container\http'
 New-Directory $SeedDir
 $pub = (Get-Content -LiteralPath $PubPath -Raw).Trim()
 
-# keep $6 hash line intact; single-quoted here-string
-$ud = @'
-#cloud-config
-autoinstall:
-  version: 1
-  identity:
-    hostname: containerhost
-    username: labadmin
-    password: "$6$soc9000salt$3lw9WQteXTDh5dcIhNazz8ZsD8q5n59ReX.Jo2x96nLbu2tH5cMHSdrJNSDIWlfKRQzQJua4JXF0CwprHLBQh0"
-  ssh:
-    install-server: true
-    allow-pw: false
-  packages:
-    - open-vm-tools
-    - qemu-guest-agent
-  late-commands:
-    # Ensure SSH + QGA are enabled in the *installed* system
-    - curtin in-target --target=/target -- systemctl enable --now ssh
-    - curtin in-target --target=/target -- systemctl enable --now qemu-guest-agent
-
-    # Install your key for labadmin with correct perms (idempotent)
-    - curtin in-target --target=/target -- bash -c "install -d -m 700 -o labadmin -g labadmin /home/labadmin/.ssh"
-    - curtin in-target --target=/target -- bash -c "grep -qxF '__PUBKEY__' /home/labadmin/.ssh/authorized_keys 2>/dev/null || echo '__PUBKEY__' >> /home/labadmin/.ssh/authorized_keys"
-    - curtin in-target --target=/target -- bash -c "chown -R labadmin:labadmin /home/labadmin/.ssh && chmod 600 /home/labadmin/.ssh/authorized_keys"
-
-    # Make sudo passwordless so Packer shell provisioners won't hang
-    - curtin in-target --target=/target -- bash -c "echo 'labadmin ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/90-labadmin && chmod 440 /etc/sudoers.d/90-labadmin"
-'@
-$ud = $ud.Replace('__PUBKEY__', $pub)
-$ud = $ud -replace "`r",""
-$utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText((Join-Path $SeedDir 'user-data'), $ud, $utf8NoBom)
-[System.IO.File]::WriteAllText((Join-Path $SeedDir 'meta-data'), "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n", $utf8NoBom)
-
-Set-Content -LiteralPath (Join-Path $SeedDir 'user-data') -Value $ud -Encoding UTF8 -NoNewline
-Set-Content -LiteralPath (Join-Path $SeedDir 'meta-data') -Value "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n" -Encoding UTF8
+# -----------------------------------------------------------
 
 # ISOs
 $IsoRoot = $envMap['ISO_DIR']
@@ -305,14 +270,19 @@ New-Directory $UbuntuOut
 New-Directory $WindowsOut
 
 # ---------- Runtime headless preference (CLI > ENV > HCL default) ----------
-if ($PSBoundParameters.ContainsKey('Headless') -and $PSBoundParameters.ContainsKey('Gui')) {
+if ($Headless.IsPresent -and $Gui.IsPresent) {
   throw "Specify only one of -Headless or -Gui."
 }
+
 $HeadlessPref = $null
-if     ($PSBoundParameters.ContainsKey('Headless')) { $HeadlessPref = $true }
-elseif ($PSBoundParameters.ContainsKey('Gui'))      { $HeadlessPref = $false }
+if     ($Headless.IsPresent) { $HeadlessPref = $true }
+elseif ($Gui.IsPresent)      { $HeadlessPref = $false }
 elseif ($env:PACKER_HEADLESS) {
-  try { $HeadlessPref = [System.Convert]::ToBoolean($env:PACKER_HEADLESS) } catch {}
+  try { $HeadlessPref = [System.Convert]::ToBoolean($env:PACKER_HEADLESS) } catch { $HeadlessPref = $null }
+}
+
+if ($HeadlessPref -ne $null) {
+  Write-Info ("Headless preference: {0}" -f ($(if($HeadlessPref){'true'}else{'false'})))
 }
 
 # ---------- Packer run helpers ----------
@@ -399,18 +369,43 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
   $logU = New-LogFile 'ubuntu'
   Write-Info ("Ubuntu build log: {0}" -f $logU)
 
-  $varsU = @{
-    iso_path             = $isoUbuntu
-    ssh_private_key_file = $KeyPath
-    output_dir           = $UbuntuOut
-    vmnet8_host_ip       = $Vmnet8Host
-    ssh_username         = 'labadmin'
-  }
-  if ($HeadlessPref -ne $null) { $varsU['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
+  # --- Seed prep (read from repo, inject key, rotate instance-id) ---
+  $udPath     = Join-Path $SeedDir 'user-data'
+  $mdPath     = Join-Path $SeedDir 'meta-data'
+  if (-not (Test-Path -LiteralPath $udPath)) { throw "Missing user-data at $udPath" }
 
-  Invoke-PackerInit     $Utpl $logU
-  Invoke-PackerValidate $Utpl $logU $varsU
-  Invoke-PackerBuild    $Utpl $logU $varsU $UbuntuMaxMinutes
+  $origUd     = Get-Content -LiteralPath $udPath -Raw
+  $utf8NoBom  = New-Object System.Text.UTF8Encoding($false)
+
+  try {
+    # 1) inject public key into placeholder, normalize to LF, write back without BOM
+    $patchedUd = $origUd.Replace('__PUBKEY__', $pub) -replace "`r",""
+    [System.IO.File]::WriteAllText($udPath, $patchedUd, $utf8NoBom)
+
+    # 2) write meta-data with fresh instance-id each run
+    $iid = 'iid-containerhost-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss')
+    $md  = "instance-id: $iid`nlocal-hostname: containerhost`n"
+    [System.IO.File]::WriteAllText($mdPath, $md, $utf8NoBom)
+
+    # 3) run packer with your existing vars
+    $varsU = @{
+      iso_path             = $isoUbuntu
+      ssh_private_key_file = $KeyPath
+      output_dir           = $UbuntuOut
+      vmnet8_host_ip       = $Vmnet8Host
+      ssh_username         = 'labadmin'
+    }
+    if ($HeadlessPref -ne $null) { $varsU['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
+
+    Invoke-PackerInit     $Utpl $logU
+    Invoke-PackerValidate $Utpl $logU $varsU
+    Invoke-PackerBuild    $Utpl $logU $varsU $UbuntuMaxMinutes
+  }
+  finally {
+    # Restore the committed file (with __PUBKEY__) so secrets aren’t left in repo
+    [System.IO.File]::WriteAllText($udPath, $origUd, $utf8NoBom)
+    Write-Info "Restored template user-data (placeholder version) at $udPath"
+  }
 }
 
 # ---------- Windows build (optional) ----------
