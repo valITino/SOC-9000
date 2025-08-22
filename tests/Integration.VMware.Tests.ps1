@@ -1,13 +1,15 @@
 # Tags: integration
 [CmdletBinding()] param()
-function Find-VNetLib {
-  foreach($p in @(
-    "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe",
-    "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe"
-  )){ if (Test-Path $p) { return $p } }
-  $null
-}
 Describe "VMware presence and non-destructive ops" -Tag 'integration' {
+  BeforeAll {
+    function Find-VNetLib {
+      foreach($p in @(
+        "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vnetlib64.exe",
+        "C:\\Program Files\\VMware\\VMware Workstation\\vnetlib64.exe"
+      )) { if (Test-Path $p) { return $p } }
+      $null
+    }
+  }
   It "finds vnetlib64.exe or skips" {
     $v = Find-VNetLib
     if (-not $v) { Set-ItResult -Skipped -Because "vnetlib64.exe not present"; return }
@@ -34,3 +36,4 @@ Describe "VMware presence and non-destructive ops" -Tag 'integration' {
     & $v -- start dhcp; & $v -- start nat
   }
 }
+
