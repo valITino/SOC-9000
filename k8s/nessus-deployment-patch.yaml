@@ -8,7 +8,7 @@ spec:
       initContainers:
         - name: register-nessus
           image: alpine:3.20
-          command: ["/bin/sh","-c"]
+          command: ["/bin/sh", "-c"]
           args:
             - |
               echo "Registering Nessus..."
