@@ -39,7 +39,7 @@ if ($ids.Count -ne $subnets.Count) {
   Fail "HOSTONLY_VMNET_IDS count ($($ids.Count)) != HOSTONLY_SUBNETS count ($($subnets.Count))."
 }
 
-Write-Host "Verifying: NAT vmnet$natId on $natSubnet/24; Host-only vmnets $($ids -join ', ')" -ForegroundColor Cyan
+Write-Host "Verifying: NAT vmnet$natId (accept any /24); Host-only vmnets $($ids -join ', ')" -ForegroundColor Cyan
 
 # --- NAT checks ---
 $natAlias = "VMware Network Adapter VMnet$natId"
@@ -47,10 +47,13 @@ $natAd = Get-NetAdapter -Name $natAlias -ErrorAction SilentlyContinue
 if (-not $natAd) { Fail "Adapter '$natAlias' missing." }
 elseif ($natAd.Status -ne 'Up') { Fail "Adapter '$natAlias' is not Up (state=$($natAd.Status))." }
 
-$natIp = Get-NetIPAddress -InterfaceAlias $natAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.PrefixLength -eq 24 } | Select-Object -First 1
-$expectedNatIp = ($natSubnet -replace '\.0$','.1')
-if (-not $natIp) { Fail "No IPv4 /24 configured on '$natAlias'." }
-elseif ($natIp.IPAddress -ne $expectedNatIp) { Fail "Expected $expectedNatIp on '$natAlias', got $($natIp.IPAddress)." }
+$natIp = Get-NetIPAddress -InterfaceAlias $natAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+         Sort-Object -Property PrefixLength | Select-Object -First 1
+if (-not $natIp) {
+  Fail "No IPv4 address configured on '$natAlias'."
+} else {
+  Write-Host "VMnet${natId}: $($natIp.IPAddress)/$($natIp.PrefixLength)"
+}
 
 # NAT/DHCP services (auto-heal: set Automatic + start if stopped)
 foreach ($svcName in 'VMware NAT Service','VMnetDHCP') {

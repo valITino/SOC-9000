@@ -1,34 +1,94 @@
-# scripts/build-packer.ps1 — SSH key provisioning + progress/timeout + clean logging + artifact gate
+# scripts/build-packer.ps1 — PS5.1-safe, headless-aware, progress+timeout, artifact gate
 [CmdletBinding()]
 param(
   [ValidateSet('ubuntu','windows')]
   [string]$Only,
   [int]$UbuntuMaxMinutes  = 45,
-  [int]$WindowsMaxMinutes = 120
+  [int]$WindowsMaxMinutes = 120,
+  [switch]$Headless
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# --------------------- UX ---------------------
+function Write-Info([string]$m){ Write-Host "[> ] $m" -ForegroundColor Cyan }
+function Write-Ok  ([string]$m){ Write-Host "[OK] $m" -ForegroundColor Green }
+function Write-Warn([string]$m){ Write-Host "[!] $m" -ForegroundColor Yellow }
+function Write-Fail([string]$m){ Write-Host "[X]  $m" -ForegroundColor Red }
+
+# --------------------- Helpers ---------------------
 function Get-RepoRoot { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
+
 function Get-DotEnv([string]$Path){
-  if(!(Test-Path $Path)){ throw ".env not found at $Path" }
-  $m=@{}; Get-Content $Path | ? {$_ -and $_ -notmatch '^\s*#'} | % {
-    if($_ -match '^([^=]+)=(.*)$'){ $m[$matches[1].Trim()] = $matches[2].Trim() }
-  }; $m
+  $m=@{}
+  if (!(Test-Path -LiteralPath $Path)) { return $m }
+  Get-Content -LiteralPath $Path | ForEach-Object {
+    if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
+    if ($_ -match '^([^=]+)=(.*)$') {
+      $k=$matches[1].Trim(); $v=$matches[2].Trim()
+      if ($k) { $m[$k]=$v }
+    }
+  }
+  return $m
 }
-function Assert-Tool([string]$exe,[string]$hint){ try { Get-Command $exe -ErrorAction Stop | Out-Null } catch { Write-Error "$exe not found. $hint"; exit 2 } }
-function Assert-Exists([string]$p,[string]$label){ if(!(Test-Path $p)){ throw "$label not found: $p" } }
+
+function Assert-Tool([string]$exe,[string]$hint){
+  try { Get-Command $exe -ErrorAction Stop | Out-Null }
+  catch { Write-Fail "$exe not found. $hint"; exit 2 }
+}
+
+function Assert-Exists([string]$p,[string]$label){ if(!(Test-Path -LiteralPath $p)){ throw "$label not found: $p" } }
+
+function New-Directory([string]$path){
+  if (-not $path) { return }
+  if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
+}
+
 function Find-Iso([string]$dir,[string[]]$patterns){
-  if(!(Test-Path $dir)){ return $null }
-  $cands = foreach($pat in $patterns){ Get-ChildItem -Path $dir -Filter $pat -ErrorAction SilentlyContinue }
+  if(!(Test-Path -LiteralPath $dir)){ return $null }
+  $cands = foreach($pat in $patterns){ Get-ChildItem -LiteralPath $dir -Filter $pat -ErrorAction SilentlyContinue }
   $cands | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
-# prints progress, but tails only when it actually changes (<= every 20s)
-$script:_lastTail = ''
-$script:_lastTailAt = Get-Date 0
+function Find-PackerExe {
+  $cmd = Get-Command packer -ErrorAction SilentlyContinue
+  if ($cmd -and $cmd.Path) { return $cmd.Path }
 
+  $cands = @()
+  if ($env:LOCALAPPDATA) {
+    $cands += (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\packer.exe')
+    $cands += (Join-Path $env:LOCALAPPDATA 'HashiCorp\Packer\packer.exe')
+  }
+  if ($env:ProgramFiles) { $cands += (Join-Path $env:ProgramFiles 'HashiCorp\Packer\packer.exe') }
+  if (${env:ProgramFiles(x86)}) { $cands += (Join-Path ${env:ProgramFiles(x86)} 'HashiCorp\Packer\packer.exe') }
+  if ($env:ChocolateyInstall) { $cands += (Join-Path $env:ChocolateyInstall 'bin\packer.exe') }
+  $cands += 'C:\ProgramData\chocolatey\bin\packer.exe'
+
+  foreach ($p in $cands | Where-Object { $_ }) {
+    try { if (Test-Path -LiteralPath $p) { return (Resolve-Path -LiteralPath $p).Path } } catch {}
+  }
+
+  $roots = @()
+  if ($env:LOCALAPPDATA) {
+    $roots += (Join-Path $env:LOCALAPPDATA 'HashiCorp')
+    $roots += (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages')
+  }
+  if ($env:ProgramFiles) { $roots += (Join-Path $env:ProgramFiles 'HashiCorp') }
+
+  foreach ($r in $roots | Where-Object { $_ -and (Test-Path $_) }) {
+    try {
+      $found = Get-ChildItem -Path $r -Filter 'packer.exe' -Recurse -ErrorAction SilentlyContinue |
+               Select-Object -First 1 -ExpandProperty FullName
+      if ($found) { return $found }
+    } catch {}
+  }
+  return $null
+}
+
+# Progress/tail helper
+$script:_lastTail   = ''
+$script:_lastTailAt = Get-Date 0
 function Show-Stage([string]$log,[datetime]$start,[int]$max){
   $stages = @(
     @{N='Booting ISO';         P='(boot|Starting HTTP|vmware-iso: VM)'},
@@ -38,7 +98,7 @@ function Show-Stage([string]$log,[datetime]$start,[int]$max){
     @{N='Shutdown';            P='Gracefully|Stopping|Powering off'},
     @{N='Artifact complete';   P='Builds finished|Artifact'}
   )
-  $text = (Test-Path $log) ? ((Get-Content $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
+  $text = (Test-Path -LiteralPath $log) ? ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
   $done = 0; foreach($s in $stages){ if($text -match $s.P){ $done++ } }
   $pct = [int](($done / $stages.Count) * 100)
   $elapsed = (Get-Date)-$start
@@ -56,50 +116,6 @@ function Show-Stage([string]$log,[datetime]$start,[int]$max){
   }
 }
 
-function Run-Packer([string]$tpl,[hashtable]$vars,[string]$name,[int]$max){
-  $ts  = (Get-Date).ToString('yyyyMMdd-HHmmss')
-  $log = Join-Path $env:TEMP ("packer-{0}-{1}.log" -f $name,$ts)
-
-  # Build args and enable Packer logging to $log (no Start-Process redirection needed)
-  $args = @('build','-timestamp-ui','-color=false','-force')
-  foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
-  $args += $tpl
-  $env:PACKER_LOG      = '1'
-  $env:PACKER_LOG_PATH = $log
-
-  $p = Start-Process -FilePath 'packer' `
-        -ArgumentList $args `
-        -PassThru `
-        -WorkingDirectory (Split-Path $tpl -Parent)
-
-  $start = Get-Date
-  while (-not $p.HasExited) {
-    Show-Stage -log $log -start $start -max $max
-    if (((Get-Date) - $start).TotalMinutes -ge $max) {
-      try { Stop-Process -Id $p.Id -Force } catch {}
-      throw "Timeout after $max min :: $name (log: $log)"
-    }
-    Start-Sleep -Seconds 5
-    try { $p.Refresh() } catch {}
-  }
-
-  $exit = $p.ExitCode
-  $tail = (Test-Path $log) ? ((Get-Content $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
-
-  if ($exit -ne 0) {
-    if ($tail -match '(?i)build was cancelled|received interrupt') {
-      Write-Warning "Packer reported a cancellation for $name. Auto-retrying once in 10s (log: $log)..."
-      Start-Sleep -Seconds 10
-      return Run-Packer -tpl $tpl -vars $vars -name $name -max $max
-    }
-    throw "packer failed ($exit) :: $name (log: $log)`n--- last lines ---`n$tail"
-  }
-
-  Write-Progress -Activity "Packer build" -Completed
-  Write-Host ("Build OK :: {0} (log: {1})" -f $name,$log) -ForegroundColor Green
-}
-
-# --- NEW: wait for VMX artifacts with their own progress bar ---
 function Wait-ForArtifacts([array]$Targets,[int]$MaxSeconds=120){
   $t0 = Get-Date
   $found = @{}
@@ -107,8 +123,8 @@ function Wait-ForArtifacts([array]$Targets,[int]$MaxSeconds=120){
     $ready = 0
     foreach ($t in $Targets) {
       if ($found.ContainsKey($t.Name)) { $ready++; continue }
-      if (Test-Path $t.Dir) {
-        $vmx = Get-ChildItem -Path $t.Dir -Filter $t.Pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+      if (Test-Path -LiteralPath $t.Dir) {
+        $vmx = Get-ChildItem -Path $t.Dir -Filter $t.Pattern -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($vmx) { $found[$t.Name] = $vmx.FullName; $ready++ }
       }
     }
@@ -124,35 +140,67 @@ function Wait-ForArtifacts([array]$Targets,[int]$MaxSeconds=120){
   throw "Artifacts not found after $MaxSeconds sec: $($missing -join '; ')"
 }
 
-# ---------- main ----------
+# --------------------- Repo / paths / logging ---------------------
 $RepoRoot = Get-RepoRoot
 Set-Location $RepoRoot
 $EnvFile  = Join-Path $RepoRoot '.env'
+$envMap   = Get-DotEnv $EnvFile
 
 Write-Host "== Packer preflight" -ForegroundColor Cyan
-Assert-Tool 'packer' 'Install: winget install HashiCorp.Packer'
-Assert-Tool 'ssh-keygen' 'Install Windows OpenSSH Client (optional feature)'
-$pv = & packer --version; Write-Host "Packer: $pv"
 
-$envMap  = Get-DotEnv $EnvFile
-$IsoRoot = $envMap['ISO_DIR']; if(-not $IsoRoot){ throw ".env missing ISO_DIR" }
-$InstallRoot = $envMap['INSTALL_ROOT']; if(-not $InstallRoot){ $InstallRoot = (Test-Path 'E:\') ? 'E:\SOC-9000-Install' : (Join-Path $env:SystemDrive 'SOC-9000-Install') }
-
-# Ensure SSH keypair for Packer
-$KeyDir  = Join-Path $InstallRoot 'keys'
-$KeyPath = Join-Path $KeyDir 'id_ed25519'
-$PubPath = "$KeyPath.pub"
-New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
-if (!(Test-Path $KeyPath)) {
-  & ssh-keygen -t ed25519 -N "" -f $KeyPath | Out-Null
-  Write-Host "Generated SSH key: $KeyPath"
+# Prefer external install root when present
+$InstallRoot = $envMap['INSTALL_ROOT']
+if (-not $InstallRoot) {
+  if (Test-Path 'E:\') { $InstallRoot = 'E:\SOC-9000-Install' }
+  else { $InstallRoot = (Join-Path $env:SystemDrive 'SOC-9000-Install') }
 }
 
-# Assemble cloud-init seed (inject pubkey safely; single-quoted here-string to keep $6 hash literal)
-$SeedDir = Join-Path $RepoRoot 'packer\ubuntu-container\http'
-New-Item -ItemType Directory -Force -Path $SeedDir | Out-Null
-$pub = (Get-Content $PubPath -Raw).Trim()
+# Logs directory (prefer E:\...)
+$LogDir = Join-Path $InstallRoot 'logs\packer'
+New-Directory $LogDir
+function New-LogFile([string]$name){
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $lf = Join-Path $LogDir ("{0}-{1}.log" -f $name,$stamp)
+  return $lf
+}
 
+# Stable Packer cache
+$CacheDir = Join-Path $InstallRoot 'cache\packer'
+New-Directory $CacheDir
+$env:PACKER_CACHE_DIR = $CacheDir
+
+# ssh-key provisioning dir
+$KeyDir  = Join-Path $InstallRoot 'keys'
+New-Directory $KeyDir
+$KeyPath = Join-Path $KeyDir 'id_ed25519'
+$PubPath = "$KeyPath.pub"
+
+# Ensure packer + ssh-keygen
+$PackerExe = Find-PackerExe
+if (-not $PackerExe) {
+  Write-Fail "packer.exe nicht gefunden. Installiere z.B.: winget install HashiCorp.Packer"
+  exit 1
+}
+Assert-Tool 'ssh-keygen' 'Install Windows OpenSSH Client (optional feature)'
+
+# Print packer version
+try {
+  $vOut = & $PackerExe -v 2>&1
+  Write-Ok ("Packer: {0}" -f ($vOut -join ' '))
+} catch { Write-Warn "Konnte Packer-Version nicht abfragen." }
+
+# Ensure SSH keypair
+if (!(Test-Path -LiteralPath $KeyPath)) {
+  & ssh-keygen -t ed25519 -N "" -f $KeyPath | Out-Null
+  Write-Info "Generated SSH key: $KeyPath"
+}
+
+# seed http directory for ubuntu build
+$SeedDir = Join-Path $RepoRoot 'packer\ubuntu-container\http'
+New-Directory $SeedDir
+$pub = (Get-Content -LiteralPath $PubPath -Raw).Trim()
+
+# keep $6 hash line intact; single-quoted here-string
 $ud = @'
 #cloud-config
 autoinstall:
@@ -160,7 +208,6 @@ autoinstall:
   identity:
     hostname: containerhost
     username: labadmin
-    # required by autoinstall; SSH password login stays OFF
     password: "$6$soc9000salt$3lw9WQteXTDh5dcIhNazz8ZsD8q5n59ReX.Jo2x96nLbu2tH5cMHSdrJNSDIWlfKRQzQJua4JXF0CwprHLBQh0"
   ssh:
     install-server: true
@@ -184,88 +231,189 @@ autoinstall:
 '@
 $ud = $ud.Replace('__PUBKEY__', $pub)
 $ud = $ud -replace "`r",""
-Set-Content -Path (Join-Path $SeedDir 'user-data') -Value $ud -Encoding UTF8 -NoNewline
-Set-Content -Path (Join-Path $SeedDir 'meta-data') -Value "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n" -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $SeedDir 'user-data') -Value $ud -Encoding UTF8 -NoNewline
+Set-Content -LiteralPath (Join-Path $SeedDir 'meta-data') -Value "instance-id: iid-ubuntu-container`nlocal-hostname: containerhost`n" -Encoding UTF8
 
-# Locate ISOs (prefer .env pin; else newest match)
-$isoUbuntuName  = $envMap['ISO_UBUNTU'];  $isoUbuntu  = $isoUbuntuName  ? (Join-Path $IsoRoot $isoUbuntuName)  : $null
-if (-not $isoUbuntu -or -not (Test-Path $isoUbuntu)) {
-  $u = Find-Iso $IsoRoot @('ubuntu-22.04*.iso','ubuntu-22.04*server*.iso'); if ($u) { $isoUbuntu = $u.FullName; $isoUbuntuName = $u.Name }
+# ISOs
+$IsoRoot = $envMap['ISO_DIR']
+if (-not $IsoRoot) {
+  $IsoRoot = Join-Path $InstallRoot 'isos'
 }
-$isoWindowsName = $envMap['ISO_WINDOWS']; $isoWindows = $isoWindowsName ? (Join-Path $IsoRoot $isoWindowsName) : $null
-if (-not $isoWindows -or -not (Test-Path $isoWindows)) {
-  $w = Find-Iso $IsoRoot @('Win*11*.iso','Windows*11*.iso','en-us_windows_11*.iso'); if ($w) { $isoWindows = $w.FullName; $isoWindowsName = $w.Name }
-}
-if ($Only -in @($null,'ubuntu')  -and -not (Test-Path $isoUbuntu))  { throw "Ubuntu ISO not found in $IsoRoot" }
-if ($Only -in @($null,'windows') -and -not (Test-Path $isoWindows)) { throw "Windows 11 ISO not found in $IsoRoot" }
+New-Directory $IsoRoot
 
-# Template paths
+$isoUbuntuName  = $envMap['ISO_UBUNTU'];  $isoUbuntu  = $null
+if ($isoUbuntuName) { $isoUbuntu = Join-Path $IsoRoot $isoUbuntuName }
+if (-not $isoUbuntu -or -not (Test-Path -LiteralPath $isoUbuntu)) {
+  $u = Find-Iso $IsoRoot @('ubuntu-22.04*.iso','ubuntu-22.04*server*.iso')
+  if ($u) { $isoUbuntu = $u.FullName; $isoUbuntuName = $u.Name }
+}
+$isoWindowsName = $envMap['ISO_WINDOWS']; $isoWindows = $null
+if ($isoWindowsName) { $isoWindows = Join-Path $IsoRoot $isoWindowsName }
+if (-not $isoWindows -or -not (Test-Path -LiteralPath $isoWindows)) {
+  $w = Find-Iso $IsoRoot @('Win*11*.iso','Windows*11*.iso','en-us_windows_11*.iso')
+  if ($w) { $isoWindows = $w.FullName; $isoWindowsName = $w.Name }
+}
+
+# Templates
 $Utpl = Join-Path $RepoRoot 'packer\ubuntu-container\ubuntu-container.pkr.hcl'
 $Wtpl = Join-Path $RepoRoot 'packer\windows-victim\windows.pkr.hcl'
 Assert-Exists $Utpl 'Ubuntu Packer template'
 if (-not $Only) { Assert-Exists $Wtpl 'Windows Packer template' }
 
-# ===== VM artifacts outside the repo =====
-$VmRoot     = Join-Path $InstallRoot 'VMs'
-$UbuntuOut  = Join-Path $VmRoot 'Ubuntu'
-$WindowsOut = Join-Path $VmRoot 'Windows'
-New-Item -ItemType Directory -Force -Path $UbuntuOut,$WindowsOut | Out-Null
-
-# Resolve VMnet8 host IP for Packer's HTTP seed (prefer .env; else detect)
+# Resolve VMnet8 host IP (from .env or detect)
 $Vmnet8Host = $envMap['VMNET8_HOSTIP']
 if (-not $Vmnet8Host) {
-  $Vmnet8Host = (Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet8" -AddressFamily IPv4 |
-                 Select-Object -First 1 -ExpandProperty IPAddress)
+  try {
+    $ipObj = Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet8" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ipObj) { $Vmnet8Host = $ipObj.IPAddress }
+  } catch {}
 }
-if (-not $Vmnet8Host) { throw "Cannot resolve VMnet8 host IP (check VMware Virtual Network Editor)" }
+if (-not $Vmnet8Host -and ($Only -eq 'ubuntu' -or -not $Only)) {
+  throw "Cannot resolve VMnet8 host IP (set VMNET8_HOSTIP in .env or check VMware vmnet8)."
+}
 
-# One-time firewall allow for port 8800 on Private (VMnet8)
+# Ports: HTTP 8800 on Private (vmnet8)
 try {
   New-NetFirewallRule -DisplayName "Packer HTTP Any (8800)" -Direction Inbound -Action Allow `
     -Protocol TCP -LocalPort 8800 -Profile Private -ErrorAction Stop | Out-Null
-} catch { }  # ignore if it already exists
+} catch { } # ignore exists
 
-# Build vars per template
-$varsUbuntu  = @{
-  iso_path             = $isoUbuntu
-  ssh_private_key_file = $KeyPath
-  output_dir           = $UbuntuOut
-  vmnet8_host_ip       = $Vmnet8Host
-}
-$varsWindows = @{
-  iso_path   = $isoWindows
-  output_dir = $WindowsOut
+# Output dirs
+$VmRoot     = Join-Path $InstallRoot 'VMs'
+$UbuntuOut  = Join-Path $VmRoot 'Ubuntu'
+$WindowsOut = Join-Path $VmRoot 'Windows'
+New-Directory $UbuntuOut
+New-Directory $WindowsOut
+
+# ---------- Common run helpers ----------
+function Invoke-PackerInit([string]$tpl,[string]$log){
+  $tplDir = Split-Path -LiteralPath $tpl -Parent
+  $args   = @('init','-color=false',(Split-Path -Leaf $tpl))
+  Write-Info ("RUN: init {0}" -f $tpl)
+
+  Push-Location $tplDir
+  try {
+    & $PackerExe @args 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -ne 0) {
+      $tail = (Test-Path $log) ? ((Get-Content $log -Tail 60) -join "`n") : ''
+      throw "packer init failed ($LASTEXITCODE) :: $tpl`n--- last lines ---`n$tail"
+    }
+  } finally { Pop-Location }
 }
 
-# Build selection
-if ($Only -eq 'ubuntu')  {
-  Run-Packer $Utpl $varsUbuntu  'ubuntu-container'  $UbuntuMaxMinutes
-} elseif ($Only -eq 'windows') {
-  Run-Packer $Wtpl $varsWindows 'windows-victim'    $WindowsMaxMinutes
-} else {
-  Run-Packer $Utpl $varsUbuntu  'ubuntu-container'  $UbuntuMaxMinutes
-  Run-Packer $Wtpl $varsWindows 'windows-victim'    $WindowsMaxMinutes
+function Invoke-PackerValidate([string]$tpl,[string]$log,[hashtable]$vars){
+  $tplDir = Split-Path -LiteralPath $tpl -Parent
+  $args   = @('validate','-color=false')
+  foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
+  $args  += (Split-Path -Leaf $tpl)
+  Write-Info ("RUN: validate {0}" -f $tpl)
+
+  Push-Location $tplDir
+  try {
+    & $PackerExe @args 2>&1 | Tee-Object -FilePath $log -Append
+    if ($LASTEXITCODE -ne 0) {
+      $tail = (Test-Path $log) ? ((Get-Content $log -Tail 60) -join "`n") : ''
+      throw "packer validate failed ($LASTEXITCODE) :: $tpl`n--- last lines ---`n$tail"
+    }
+  } finally { Pop-Location }
 }
 
-# --- NEW: Gate on VMX presence with a clear progress bar, then persist paths ---
+function Invoke-PackerBuild([string]$tpl,[string]$log,[hashtable]$vars,[int]$maxMinutes){
+  $env:PACKER_LOG      = '1'
+  $env:PACKER_LOG_PATH = $log
+
+  $args = @('build','-timestamp-ui','-color=false','-force')
+  foreach($k in $vars.Keys){ $args += @('-var',("{0}={1}" -f $k,$vars[$k])) }
+  $args += (Split-Path -Leaf $tpl)
+
+  # PS 5.1: -ArgumentList must be a single string
+  $argStr = ($args | ForEach-Object {
+    if ($_ -match '[\s"`]') { '"' + ($_ -replace '"','\"') + '"' } else { $_ }
+  }) -join ' '
+
+  $tplDir = Split-Path -LiteralPath $tpl -Parent
+  Write-Info ("RUN: build {0}" -f $tpl)
+
+  $p = Start-Process -FilePath $PackerExe -ArgumentList $argStr -PassThru -WorkingDirectory $tplDir
+
+  $start = Get-Date
+  while (-not $p.HasExited) {
+    Show-Stage -log $log -start $start -max $maxMinutes
+    if (((Get-Date) - $start).TotalMinutes -ge $maxMinutes) {
+      try { Stop-Process -Id $p.Id -Force } catch {}
+      throw "Timeout after $maxMinutes min (log: $log)"
+    }
+    Start-Sleep -Seconds 5
+    try { $p.Refresh() } catch {}
+  }
+  if ($p.ExitCode -ne 0) {
+    $tail = (Test-Path -LiteralPath $log) ? ((Get-Content -LiteralPath $log -Tail 200 -ErrorAction SilentlyContinue) -join "`n") : ''
+    if ($tail -match '(?i)build was cancelled|received interrupt') {
+      Write-Warn "Packer reported a cancellation. Auto-retrying once in 10s (log: $log)..."
+      Start-Sleep -Seconds 10
+      return Invoke-PackerBuild $tpl $log $vars $maxMinutes
+    }
+    throw "packer build failed ($($p.ExitCode)) (log: $log)`n--- last lines ---`n$tail"
+  }
+  Write-Progress -Activity "Packer build" -Completed
+  Write-Ok ("Build OK (log: {0})" -f $log)
+}
+
+# ---------- Ubuntu build (optional) ----------
+if ($Only -eq 'ubuntu' -or -not $Only) {
+  if (-not (Test-Path -LiteralPath $isoUbuntu)) { throw "Ubuntu ISO not found in $IsoRoot" }
+  $logU = New-LogFile 'ubuntu'
+  Write-Info ("Ubuntu build log: {0}" -f $logU)
+
+  # variables for HCL — DO NOT send 'headless' unless -Headless was passed (respect HCL default)
+  $varsU = @{
+    iso_path             = $isoUbuntu
+    ssh_private_key_file = $KeyPath
+    output_dir           = $UbuntuOut
+    vmnet8_host_ip       = $Vmnet8Host
+  }
+  if ($Headless) { $varsU['headless'] = 'true' }
+
+  Invoke-PackerInit     $Utpl $logU
+  Invoke-PackerValidate $Utpl $logU $varsU
+  Invoke-PackerBuild    $Utpl $logU $varsU $UbuntuMaxMinutes
+}
+
+# ---------- Windows build (optional) ----------
+if ($Only -eq 'windows' -or -not $Only) {
+  if (-not (Test-Path -LiteralPath $isoWindows)) { throw "Windows 11 ISO not found in $IsoRoot" }
+  $logW = New-LogFile 'windows'
+  Write-Info ("Windows build log: {0}" -f $logW)
+
+  $varsW = @{
+    iso_path   = $isoWindows
+    output_dir = $WindowsOut
+  }
+  if ($Headless) { $varsW['headless'] = 'true' } # harmless if template ignores
+
+  Invoke-PackerInit     $Wtpl $logW
+  Invoke-PackerValidate $Wtpl $logW $varsW
+  Invoke-PackerBuild    $Wtpl $logW $varsW $WindowsMaxMinutes
+}
+
+# ---------- Artifact gate + persist ----------
 $targets = @()
-if ($Only -eq 'ubuntu' -or -not $Only)  { $targets += @{ Name='Ubuntu';  Dir=$UbuntuOut;  Pattern='*.vmx' } }
+if ($Only -eq 'ubuntu'  -or -not $Only) { $targets += @{ Name='Ubuntu';  Dir=$UbuntuOut;  Pattern='*.vmx' } }
 if ($Only -eq 'windows' -or -not $Only) { $targets += @{ Name='Windows'; Dir=$WindowsOut; Pattern='*.vmx' } }
 
 $artifacts = Wait-ForArtifacts -Targets $targets -MaxSeconds 120
 
 $StateDir = Join-Path $InstallRoot 'state'
-New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
-# convert hashtable-of-name->vmx to an array for stable JSON
+New-Directory $StateDir
 $artifactArray = @()
 foreach ($k in $artifacts.Keys) { $artifactArray += @{ name = $k; vmx = $artifacts[$k] } }
 $artifactJson = $artifactArray | ConvertTo-Json -Depth 3
 $artifactFile = Join-Path $StateDir 'packer-artifacts.json'
-Set-Content -Path $artifactFile -Value $artifactJson -Encoding UTF8
+Set-Content -LiteralPath $artifactFile -Value $artifactJson -Encoding UTF8
 
 Write-Host "`nArtifacts ready:" -ForegroundColor Cyan
 $artifactArray | ForEach-Object { Write-Host (" - {0}: {1}" -f $_.name, $_.vmx) }
 Write-Host ("Saved: {0}" -f $artifactFile)
 
 Write-Host "`nPacker builds completed." -ForegroundColor Green
-Write-Host ("Seed server bind: http://{0}:8800 (VMnet8)" -f $Vmnet8Host) -ForegroundColor Cyan
+if ($Vmnet8Host) { Write-Host ("Seed server bind: http://{0}:8800 (VMnet8)" -f $Vmnet8Host) -ForegroundColor Cyan }

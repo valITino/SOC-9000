@@ -13,7 +13,7 @@
 param(
     [switch]$Preview,
     [bool]$PruneExtras = $true,
-    [string]$NatSubnet = "192.168.186.0",
+    [string]$NatSubnet,
     [int[]]$HostOnlyIds,
     [string[]]$HostOnlySubnets
 )
@@ -187,7 +187,12 @@ function Ensure-VMwareServices {
 }
 
 # 1) Ensure NAT on vmnet8
-Set-VMnetNAT -Subnet $NatSubnet
+if ($NatSubnet) {
+  Write-Host "Configuring NAT on VMnet$NatVmnetId to $NatSubnet/24"
+  Set-VMnetNAT -Id $NatVmnetId -Subnet $NatSubnet
+} else {
+  Write-Host "NAT auto mode: leaving VMnet$NatVmnetId as-is (no forced subnet)."
+}
 
 # 2) Optionally remove other host-only vmnets to avoid pile-ups
 if ($PruneExtras) {

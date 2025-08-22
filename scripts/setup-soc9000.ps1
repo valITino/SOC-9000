@@ -1,257 +1,304 @@
 [CmdletBinding()]
 param(
-    [switch]$ManualNetwork,      # force manual editor
-    [string]$ArtifactsDir,       # back-compat: treated as CONFIG_NETWORK_DIR
-    [string]$IsoDir
+    [switch]$ManualNetwork,
+    [string]$ArtifactsDir,
+    [string]$IsoDir,
+    [switch]$AutoPartitionE,
+    [switch]$Headless,
+    [switch]$SkipPrereqs   # internal: used when we relaunch into PS7 after installing it
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# -------------------- UX Helpers (ASCII) --------------------
+function Banner([string]$Title, [string]$Subtitle = '', [ConsoleColor]$Color = [ConsoleColor]::Cyan) {
+  $line = '============================================================================'
+  Write-Host ''
+  Write-Host $line -ForegroundColor $Color
+  Write-Host ('  >> {0}' -f $Title) -ForegroundColor $Color
+  if ($Subtitle) { Write-Host ('     {0}' -f $Subtitle) -ForegroundColor DarkGray }
+  Write-Host $line -ForegroundColor $Color
+}
+function Line([string]$Text, [string]$Kind = 'info') {
+  $fg = @{ info='Gray'; ok='Green'; warn='Yellow'; err='Red'; step='White'; ask='Magenta' }[$Kind]
+  $tag = @{ info='[i]'; ok='[OK]'; warn='[!]'; err='[X]'; step='[>]'; ask='[?]' }[$Kind]
+  Write-Host ('  {0} {1}' -f $tag, $Text) -ForegroundColor $fg
+}
+function Panel([string]$Title, [string[]]$Lines) {
+  $line = '+--------------------------------------------------------------------------+'
+  Write-Host $line -ForegroundColor DarkCyan
+  Write-Host ('| {0}' -f $Title) -ForegroundColor DarkCyan
+  Write-Host $line -ForegroundColor DarkCyan
+  foreach ($ln in $Lines) { Write-Host ('| {0}' -f $ln) }
+  Write-Host $line -ForegroundColor DarkCyan
+}
+function Refresh-Path {
+  $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+              [Environment]::GetEnvironmentVariable('Path','User')
+}
+
+# -------------------- Elevation & Shell helpers --------------------
+function Ensure-Admin-CurrentHost {
+  $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).
+               IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if ($isAdmin) { return }
+  $exe = if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh' } else { 'powershell' }
+  Write-Host 'Requesting elevation...' -ForegroundColor Cyan
+  $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
+  Start-Process -FilePath $exe -Verb RunAs -ArgumentList $args | Out-Null
+  exit 0
+}
+
+function Get-PreferredShellExe {
+  $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+  if ($pwsh) { return 'pwsh' }
+  return 'powershell'
+}
+
+Ensure-Admin-CurrentHost
+
+# -------------------- Paths / Logs --------------------
+$ScriptRoot = Split-Path -Parent $PSCommandPath
+$RepoRoot   = (Resolve-Path (Join-Path $ScriptRoot '..')).Path
+$EnvFile    = Join-Path $RepoRoot '.env'
+
+if (Test-Path 'E:\') { $InstallRoot = 'E:\SOC-9000-Install' } else { $InstallRoot = 'C:\SOC-9000-Install' }
+$LogRoot      = Join-Path $InstallRoot 'logs'
+$SetupLogDir  = Join-Path $LogRoot 'setup'
+$PackerLogDir = Join-Path $LogRoot 'packer'
+# Always keep ISOs under install root (unless user overrides explicitly)
+if ($IsoDir) { $IsoRoot = $IsoDir } else { $IsoRoot = Join-Path $InstallRoot 'isos' }
+
+New-Item -ItemType Directory -Force -Path $InstallRoot,$LogRoot,$SetupLogDir,$PackerLogDir,$IsoRoot | Out-Null
+
+$ts = (Get-Date).ToString('yyyyMMdd-HHmmss')
+$TranscriptPath = Join-Path $SetupLogDir ('setup-{0}.log' -f $ts)
+try { Start-Transcript -Path $TranscriptPath -Force | Out-Null } catch {}
+
 trap {
-    Write-Error $_
+  Line ('Unexpected error: {0}' -f $_.Exception.Message) 'err'
+  try { Stop-Transcript | Out-Null } catch {}
+  Read-Host 'Press ENTER to exit' | Out-Null
+  exit 1
+}
+
+# -------------------- .env loader --------------------
+$EnvMap = @{}
+if (Test-Path $EnvFile) {
+  foreach ($line in Get-Content $EnvFile) {
+    if ($line -match '^\s*#' -or $line -match '^\s*$') { continue }
+    $k,$v = $line -split '=',2
+    if ($k -and $v) { $EnvMap[$k.Trim()] = $v.Trim() }
+  }
+}
+
+# -------------------- Session Overview --------------------
+$overview = @(
+  ('Repo Root     : {0}' -f $RepoRoot),
+  ('ISOs Path     : {0}' -f $IsoRoot),
+  ('Logs (setup)  : {0}' -f $SetupLogDir),
+  ('Logs (packer) : {0}' -f $PackerLogDir),
+  ('User          : {0}@{1}' -f $env:USERNAME, $env:COMPUTERNAME),
+  ('Shell         : PowerShell {0} {1}' -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition),
+  ('Started       : {0}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+)
+Banner 'SOC-9000 Setup Orchestrator' 'Steps 1-6 with clean, readable UX'
+Panel 'Session Overview' $overview
+
+# =====================================================================
+# Step 1 - PREREQUISITES (ALWAYS RUN FIRST; DO NOT FORCE PS7 UPFRONT)
+# =====================================================================
+if (-not $SkipPrereqs) {
+  Banner 'Step 1 of 6 - Prerequisites' 'Runs install-prereqs.ps1; may prompt for VMware install or reboot.'
+  $Step1Shell = Get-PreferredShellExe   # use pwsh if present, otherwise powershell (PS5)
+  $preReqs = Join-Path $RepoRoot 'scripts\install-prereqs.ps1'
+  if ($AutoPartitionE) {
+    & $Step1Shell -NoProfile -ExecutionPolicy Bypass -File $preReqs -AutoPartitionE -Verbose
+  } else {
+    & $Step1Shell -NoProfile -ExecutionPolicy Bypass -File $preReqs -Verbose
+  }
+  $code = $LASTEXITCODE
+  if ($code -eq 2) {
+    Line 'Prereqs complete; a reboot is required to finalize WSL activation.' 'warn'
+    Read-Host '  [?] Press ENTER to reboot now' | Out-Null
     try { Stop-Transcript | Out-Null } catch {}
-    Read-Host 'Press ENTER to exit' | Out-Null
-    exit 1
+    Restart-Computer -Force
+    exit
+  } elseif ($code -ne 0) {
+    throw ('install-prereqs.ps1 failed with exit code {0}' -f $code)
+  }
+  Line 'Prerequisites complete.' 'ok'
+
+  # If we're still in PS5 but pwsh now exists, relaunch self in PS7 for the rest
+  Refresh-Path
+  $nowHasPwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+  $isCore     = $PSVersionTable.PSEdition -eq 'Core'
+  if ($nowHasPwsh -and -not $isCore) {
+    Line 'Switching to PowerShell 7 for remaining steps...' 'info'
+    $unbound = $MyInvocation.UnboundArguments + @('-SkipPrereqs')
+    $args = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $unbound
+    Start-Process -FilePath 'pwsh' -Verb RunAs -ArgumentList $args | Out-Null
+    try { Stop-Transcript | Out-Null } catch {}
+    exit 0
+  }
+} else {
+  Line 'SkipPrereqs flag detected — continuing at Step 2.' 'info'
 }
 
-function Start-PwshAdmin {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $p  = New-Object Security.Principal.WindowsPrincipal $id
-    $needsAdmin = -not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    $needsPwsh  = $PSVersionTable.PSVersion.Major -lt 7
-    if ($needsAdmin -or $needsPwsh) {
-        Write-Host "Relaunching in elevated PowerShell 7..." -ForegroundColor Cyan
-        $pwshArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$PSCommandPath`"") + $MyInvocation.UnboundArguments
-        $verb = if ($needsAdmin) { 'RunAs' } else { 'Open' }
-        Start-Process pwsh -Verb $verb -ArgumentList $pwshArgs | Out-Null
-        exit 0
-    }
+# =====================================================================
+# Step 2 - Repository (use current tree; no cloning)
+# =====================================================================
+Banner 'Step 2 of 6 - Repository' 'Using the current working tree; cloning disabled.'
+$CurrentRepo  = (Resolve-Path (Join-Path $ScriptRoot '..')).Path
+
+# Quick sanity check that we are in the SOC-9000 tree
+$Sentinels = @(
+  (Join-Path $CurrentRepo 'scripts\build-packer.ps1'),
+  (Join-Path $CurrentRepo 'scripts\download-isos.ps1'),
+  (Join-Path $CurrentRepo 'packer\ubuntu-container\ubuntu-container.pkr.hcl')
+)
+$LooksLikeRepo = $true
+foreach ($s in $Sentinels) { if (-not (Test-Path $s)) { $LooksLikeRepo = $false; break } }
+
+if (-not $LooksLikeRepo) {
+  throw "This folder doesn't look like SOC-9000. Open an elevated PowerShell in your cloned repo and rerun scripts\setup-soc9000.ps1."
 }
 
-# One-shot resume task cleanup (if we came back after reboot)
-try {
-    $t = Get-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -ErrorAction SilentlyContinue
-    if ($t) { Unregister-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Confirm:$false }
-} catch {}
+Line ("Using current tree: {0}" -f $CurrentRepo) 'ok'
+$RepoRoot = $CurrentRepo
 
-function Get-DotEnvMap([string]$Path) {
-    if (-not (Test-Path $Path)) { return @{} }
-    $m = @{}
-    Get-Content $Path | ForEach-Object {
-        if ($_ -match '^\s*#' -or $_ -match '^\s*$') { return }
-        $k,$v = $_ -split '=',2
-        if ($null -ne $v) { $m[$k.Trim()] = $v.Trim() }
-    }
-    return $m
+# =====================================================================
+# Step 3 - Directories & ISOs
+# =====================================================================
+Banner 'Step 3 of 6 - Directories and ISO Validation' 'Verifies ISOs; opens official vendor pages when manual download is needed.'
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot 'artifacts') | Out-Null
+Line 'Running ISO downloader...' 'step'
+$Shell = Get-PreferredShellExe
+& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\download-isos.ps1') -IsoDir $IsoRoot -Verbose
+$isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
+if (-not $isos -or $isos.Count -eq 0) {
+  Line ('No ISO detected in {0}.' -f $IsoRoot) 'warn'
+  Read-Host '  [?] Place the required ISO(s) into the folder above, then press ENTER to re-check' | Out-Null
+  $isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
+  if (-not $isos -or $isos.Count -eq 0) { throw 'ISO(s) still missing; cannot continue.' }
+}
+Line ('{0} ISO(s) present.' -f $isos.Count) 'ok'
+
+# =====================================================================
+# Step 4 - Networking
+# =====================================================================
+Banner 'Step 4 of 6 - VMware Networking' 'Verify first; configure only if needed.'
+Line 'Verifying VMware networks...' 'step'
+& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1') -Verbose
+if ($LASTEXITCODE -ne 0) {
+  Line 'Verification failed; applying configuration from .env ...' 'warn'
+  if ($ManualNetwork) {
+    $vmnetcfg = @(
+      "${env:ProgramFiles}\VMware\VMware Workstation\vmnetcfg.exe",
+      "${env:ProgramFiles(x86)}\VMware\VMware Workstation\vmnetcfg.exe"
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($vmnetcfg) { & $vmnetcfg } else { Line 'vmnetcfg.exe not found; proceeding with automated script.' 'warn' }
+  }
+  & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\configure-vmnet.ps1') -Verbose
+  if ($LASTEXITCODE -ne 0) { throw ('Automated network configuration failed (configure-vmnet.ps1 exit {0}).' -f $LASTEXITCODE) }
+  Line 'Re-verifying VMware networks...' 'step'
+  & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1') -Verbose
+  if ($LASTEXITCODE -ne 0) { throw 'Networking verification failed after configuration.' }
+  Line 'Networks configured.' 'ok'
+} else {
+  Line 'Networks already correctly configured; no changes applied.' 'ok'
 }
 
-function Set-EnvKeyIfMissing([string]$Key,[string]$Value) {
-    if (-not (Test-Path $EnvFile)) { New-Item -ItemType File -Path $EnvFile -Force | Out-Null }
-    $existing = Get-Content $EnvFile
-    if ($existing -notmatch "^\s*$Key\s*=") { Add-Content -Path $EnvFile -Value "$Key=$Value" }
+# =====================================================================
+# Step 5 - WSL & SSH keys
+# =====================================================================
+Banner 'Step 5 of 6 - WSL Check and SSH Keys' 'Quick WSL ping; generate host SSH keys if missing; initialize WSL user.'
+Line 'WSL quick status...' 'step'
+try { wsl.exe --status | Out-Null; Line 'WSL responding.' 'ok' } catch { Line ('WSL status warning: {0}' -f $_.Exception.Message) 'warn' }
+$SshDir = Join-Path $env:USERPROFILE '.ssh'
+if (-not (Test-Path (Join-Path $SshDir 'id_ed25519')) -and -not (Test-Path (Join-Path $SshDir 'id_rsa'))) {
+  Line 'Generating host SSH keypair (ed25519 preferred)...' 'step'
+  New-Item -ItemType Directory -Force -Path $SshDir | Out-Null
+  try { & ssh-keygen -t ed25519 -N '' -f (Join-Path $SshDir 'id_ed25519') | Out-Null; Line 'ed25519 key generated.' 'ok' }
+  catch { & ssh-keygen -t rsa -b 4096 -N '' -f (Join-Path $SshDir 'id_rsa') | Out-Null; Line 'RSA-4096 key generated.' 'ok' }
+} else { Line 'Host SSH key(s) already present.' 'ok' }
+& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1') -Verbose
+& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\wsl-init-user.ps1') -Verbose
+
+# =====================================================================
+# Step 6 - Build (Ubuntu first)
+# =====================================================================
+Banner 'Step 6 of 6 - Build Lab (Ubuntu First)' 'Shows VMware UI if your Packer template supports headless=false.'
+New-Item -ItemType Directory -Force -Path $PackerLogDir | Out-Null
+$UbuntuLog = Join-Path $PackerLogDir ('ubuntu-{0}.log' -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
+
+# Tell build script what we want (string "true"/"false", not boolean)
+$env:PACKER_HEADLESS = if ($Headless) { 'true' } else { 'false' }
+
+Line ('Starting Ubuntu build; logging to: {0}' -f $UbuntuLog) 'step'
+& $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\build-packer.ps1') -Only ubuntu -Headless:$Headless -Verbose *>&1 | Tee-Object -FilePath $UbuntuLog
+if ($LASTEXITCODE -ne 0) { throw ('Ubuntu build failed. See {0}' -f $UbuntuLog) }
+Line 'Ubuntu build completed.' 'ok'
+
+# -------------------- Credential Summary --------------------
+# Ubuntu username (prefer .env, else parse user-data, else default)
+$UbuntuUser = $EnvMap['UBUNTU_USERNAME']
+if (-not $UbuntuUser) {
+  $UserDataPath = Join-Path $RepoRoot 'packer\ubuntu-container\http\user-data'
+  if (Test-Path $UserDataPath) {
+    $m = Select-String -Path $UserDataPath -Pattern '^\s*username:\s*(\S+)' | Select-Object -First 1
+    if ($m) { $UbuntuUser = $m.Matches[0].Groups[1].Value.Trim() }
+  }
+  if (-not $UbuntuUser) { $UbuntuUser = 'labadmin' }
+} else {
+  $UserDataPath = Join-Path $RepoRoot 'packer\ubuntu-container\http\user-data'
 }
 
-function Invoke-IfScriptExists(
-    [string]$ScriptPath,
-    [string]$FriendlyName,
-    [int[]]$AllowedExitCodes = @(0),
-    [int[]]$RebootExitCodes  = @(2),
-    [switch]$AutoResume
-) {
-    if (-not (Test-Path $ScriptPath)) { return }
+# SSH key paths
+$PrivKeys = @()
+$PubKeys  = @()
+$k1 = Join-Path $SshDir 'id_ed25519'
+$k2 = Join-Path $SshDir 'id_rsa'
+if (Test-Path $k1) { $PrivKeys += $k1; if (Test-Path ($k1 + '.pub')) { $PubKeys += ($k1 + '.pub') } }
+if (Test-Path $k2) { $PrivKeys += $k2; if (Test-Path ($k2 + '.pub')) { $PubKeys += ($k2 + '.pub') } }
 
-    function Register-ResumeTask {
-        param([string[]]$ExtraArgs)
-        try {
-            $existing = Get-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -ErrorAction SilentlyContinue
-            if ($existing) { Unregister-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Confirm:$false }
-            $action  = New-ScheduledTaskAction -Execute 'pwsh.exe' `
-                -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`" {1}" -f $PSCommandPath, ($ExtraArgs -join ' '))
-            $trigger = New-ScheduledTaskTrigger -AtLogOn
-            $principal = New-ScheduledTaskPrincipal -UserId "$env:USERNAME" -LogonType InteractiveToken -RunLevel Highest
-            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-                        -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 120)
-            Register-ScheduledTask -TaskName 'SOC-9000-Setup-Resume' -Action $action -Trigger $trigger `
-                -Principal $principal -Settings $settings | Out-Null
-        } catch {
-            throw "Failed to register resume task: $($_.Exception.Message)"
-        }
-    }
-
-    Write-Host ("Running {0} ..." -f $FriendlyName)
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Verbose
-    $code = $LASTEXITCODE
-
-    if ($RebootExitCodes -contains $code) {
-        if ($AutoResume) {
-            Register-ResumeTask -ExtraArgs $MyInvocation.UnboundArguments
-            try { Stop-Transcript | Out-Null } catch {}
-            Write-Warning ("{0} requested a reboot (exit code {1}). Rebooting now and will automatically resume..." -f $FriendlyName,$code)
-            Restart-Computer -Force
-            Start-Sleep -Seconds 2
-            exit 0
-        } else {
-            Write-Warning ("{0} requested a reboot (exit code {1}). Please reboot, then rerun setup." -f $FriendlyName,$code)
-            try { Stop-Transcript | Out-Null } catch {}
-            Read-Host 'Press ENTER to exit' | Out-Null
-            exit 0
-        }
-    }
-
-    if ($AllowedExitCodes -notcontains $code) {
-        throw ("{0} exited with code {1}" -f $FriendlyName,$code)
-    }
-
-    Write-Host ("{0}: OK" -f $FriendlyName) -ForegroundColor Green
+$StateDir   = Join-Path $InstallRoot 'state'
+$StateFile  = Join-Path $StateDir 'packer-artifacts.json'
+$UbuntuVMX  = $null
+if (Test-Path $StateFile) {
+  try {
+    $json = Get-Content $StateFile -Raw | ConvertFrom-Json
+    $UbuntuVMX = $json.ubuntu.vmx
+  } catch {}
+}
+if (-not $UbuntuVMX) {
+  $UbuntuVMX = (Get-ChildItem -Path (Join-Path $InstallRoot 'VMs\Ubuntu') -Filter *.vmx -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName)
 }
 
-function Get-VNetLibPath {
-    foreach ($p in @(
-        "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
-        "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
-    )) { if (Test-Path $p) { return $p } }
-    $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+."
-}
+Panel 'Ubuntu Access & Credentials' @(
+  ('Username            : {0}' -f $UbuntuUser),
+  ('Password login      : disabled (SSH key auth)'),
+  ('SSH private key(s)  : {0}' -f ($(if($PrivKeys){$PrivKeys -join ', '}else{'(none)'}))),
+  ('SSH public key(s)   : {0}' -f ($(if($PubKeys){$PubKeys -join ', '}else{'(none)'}))),
+  ('VMX path            : {0}' -f ($(if($UbuntuVMX){$UbuntuVMX}else{'(not found)'}))),
+  '',
+  ('Defined in .env     : {0}' -f $EnvFile),
+  ('Autoinstall file    : {0}' -f ($(if(Test-Path $UserDataPath){$UserDataPath}else{'(missing)'}))),
+  ('State JSON          : {0}' -f ($(if(Test-Path $StateFile){$StateFile}else{'(missing)'})))
+)
 
-function Open-VirtualNetworkEditor {
-    $candidates = @(
-        'C:\Program Files\VMware\VMware Workstation\vmnetcfg.exe',
-        'C:\Program Files (x86)\VMware\VMware Workstation\vmnetcfg.exe'
-    )
-    $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $exe) {
-        throw 'vmnetcfg.exe (Virtual Network Editor) not found. Open VMware Workstation > Edit > Virtual Network Editor.'
-    }
-    Write-Host 'Launching Virtual Network Editor...' -ForegroundColor Yellow
-    Write-Host 'Configure VMnet8 as NAT (DHCP on). Create VMnet9–VMnet12 as Host-only (255.255.255.0). Close the editor when done.' -ForegroundColor Yellow
-    Start-Process -FilePath $exe -Wait | Out-Null
-}
+Panel 'Logs & Artifacts' @(
+  ('Packer logs         : {0}' -f $PackerLogDir),
+  ('Setup transcript    : {0}' -f $TranscriptPath),
+  ('ISOs directory      : {0}' -f $IsoRoot),
+  'VMware Workstation  : Library -> Ubuntu -> Console (VNC optional via builder)'
+)
 
-function Convert-FileToAsciiCrLf([string]$Path) {
-    $raw   = Get-Content $Path -Raw
-    $ascii = [System.Text.Encoding]::ASCII.GetString([System.Text.Encoding]::UTF8.GetBytes($raw))
-    $clean = ($ascii -replace "`r?`n","`r`n") -replace '[^\x00-\x7F]', ''
-    Set-Content -Path $Path -Value $clean -Encoding Ascii
-}
+Read-Host '  [?] Press ENTER to finish' | Out-Null
 
-function Resolve-InstallRoot([hashtable]$EnvMap) {
-    if ($EnvMap['INSTALL_ROOT']) { return $EnvMap['INSTALL_ROOT'] }
-    if (Test-Path 'E:\') { return 'E:\SOC-9000-Install' }
-    Write-Warning "E:\ not found; falling back to C:\SOC-9000-Install"
-    return (Join-Path $env:SystemDrive 'SOC-9000-Install')
-}
-
-# ---------- main ----------
-Start-PwshAdmin
-
-# Repo + .env
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$EnvFile  = Join-Path $RepoRoot '.env'
-$EnvMap   = Get-DotEnvMap $EnvFile
-
-# Resolve roots (ENV > E:\ > C:\)
-$InstallRoot = Resolve-InstallRoot $EnvMap
-
-# Derived paths (ENV overrides still respected)
-$ConfigNetworkDir = if ($EnvMap['CONFIG_NETWORK_DIR']) { $EnvMap['CONFIG_NETWORK_DIR'] } else { Join-Path $InstallRoot 'config\network' }
-if ($PSBoundParameters.ContainsKey('ArtifactsDir') -and $ArtifactsDir) { $ConfigNetworkDir = $ArtifactsDir } # back-compat
-
-$IsoRoot = if ($IsoDir) { $IsoDir } elseif ($EnvMap['ISO_DIR']) { $EnvMap['ISO_DIR'] } else { Join-Path $InstallRoot 'isos' }
-$LogDir  = Join-Path $InstallRoot 'logs\installation'
-$StateDir= Join-Path $InstallRoot 'state'
-
-# Ensure dirs
-New-Item -ItemType Directory -Force -Path $InstallRoot,$ConfigNetworkDir,$IsoRoot,$LogDir,$StateDir | Out-Null
-
-# Persist keys back to .env if missing (so next run is deterministic)
-Set-EnvKeyIfMissing 'INSTALL_ROOT'       $InstallRoot
-Set-EnvKeyIfMissing 'CONFIG_NETWORK_DIR' $ConfigNetworkDir
-Set-EnvKeyIfMissing 'ISO_DIR'            $IsoRoot
-Set-EnvKeyIfMissing 'HOSTONLY_VMNET_IDS' '9,10,11,12'
-
-# Transcript
+Banner 'Setup Steps 1-6 Complete' 'You can proceed to Step 7 (Windows) when ready.'
+Write-Host 'NOTE: Credentials shown above also appear in this transcript log.' -ForegroundColor Yellow
 try { Stop-Transcript | Out-Null } catch {}
-$ts  = Get-Date -Format 'yyyyMMdd-HHmmss'
-$log = Join-Path $LogDir "setup-soc9000-$ts.log"
-Start-Transcript -Path $log -Force | Out-Null
-
-# --------- ISO download + HARD CHECK ----------
-Write-Host "`n==== Ensuring ISO downloads ====" -ForegroundColor Cyan
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\download-isos.ps1') -IsoDir $IsoRoot
-if ($LASTEXITCODE -ne 0) { throw "download-isos.ps1 failed with exit code $LASTEXITCODE" }
-
-Write-Host "`n==== Checking required files ====" -ForegroundColor Cyan
-function Test-IsosReady {
-    param([string]$IsoRoot)
-    $ubuntu  = Get-ChildItem -Path $IsoRoot -Filter 'ubuntu-22.04*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
-    $windows = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(Windows|Win).*11' -or $_.Name -match 'Windows11' } | Select-Object -First 1
-    $pfsense = Get-ChildItem -Path $IsoRoot -Filter '*.iso' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(pfsense|netgate).*' } | Select-Object -First 1
-    $nessus  = Get-ChildItem -Path $IsoRoot -Filter '*.deb' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'nessus.*(amd64|x86_64)' } | Select-Object -First 1
-    $missing = @()
-    if (-not $ubuntu)  { $missing += 'Ubuntu 22.04 ISO (ubuntu-22.04*.iso)' }
-    if (-not $windows) { $missing += 'Windows 11 ISO' }
-    if (-not $pfsense) { $missing += 'pfSense / Netgate installer ISO' }
-    if (-not $nessus)  { $missing += 'Nessus Essentials .deb' }
-    [pscustomobject]@{
-        Ready   = ($missing.Count -eq 0)
-        Missing = $missing
-        Found   = @($ubuntu,$windows,$pfsense,$nessus) | Where-Object { $_ }
-    }
-}
-$check = Test-IsosReady -IsoRoot $IsoRoot
-if (-not $check.Ready) {
-    Write-Host "Missing files:" -ForegroundColor Yellow
-    $check.Missing | ForEach-Object { Write-Host " - $_" -ForegroundColor Yellow }
-    Write-Host ""
-    Write-Host "Please place the missing files into: $IsoRoot" -ForegroundColor Yellow
-    Write-Host "Aborting before host configuration." -ForegroundColor Red
-    Stop-Transcript | Out-Null
-    exit 1
-}
-
-Write-Host "`n==== ISO summary ====" -ForegroundColor Cyan
-Get-ChildItem -Path $IsoRoot -File | Sort-Object Length -Descending | Select-Object Name,Length,LastWriteTime | Format-Table
-
-# =================== NETWORKING ===================
-Write-Host "`n==== Configuring VMware networks ====" -ForegroundColor Cyan
-if ($ManualNetwork) {
-    Open-VirtualNetworkEditor
-} else {
-    $profilePath = Join-Path $ConfigNetworkDir 'vmnet-profile.txt'
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\generate-vmnet-profile.ps1') `
-      -OutFile $profilePath -EnvPath (Join-Path $RepoRoot '.env') -CopyToLogs
-    if ($LASTEXITCODE -ne 0) { throw "generate-vmnet-profile.ps1 failed ($LASTEXITCODE)." }
-
-    $cfgPath = Join-Path $RepoRoot 'scripts\configure-vmnet.ps1'
-    Convert-FileToAsciiCrLf $cfgPath
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $cfgPath
-    if ($LASTEXITCODE -ne 0) { throw "Automated network configuration failed (configure-vmnet.ps1 exit $LASTEXITCODE)." }
-}
-
-Write-Host "`n==== Verifying networking ====" -ForegroundColor Cyan
-& pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\verify-networking.ps1')
-if ($LASTEXITCODE -ne 0) { Write-Error "Networking verification failed. See log at: $log"; Stop-Transcript | Out-Null; exit 1 }
-
-# =================== WSL + LAB ===================
-Write-Host "`n==== Bootstrapping WSL and Ansible ====" -ForegroundColor Cyan
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-prepare.ps1')         'wsl-prepare.ps1' -AllowedExitCodes @(0) -RebootExitCodes @(2) -AutoResume
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-init-user.ps1')       'wsl-init-user.ps1' -AllowedExitCodes @(0)
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\copy-ssh-key-to-wsl.ps1') 'copy-ssh-key-to-wsl.ps1' -AllowedExitCodes @(0)
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\wsl-bootstrap.ps1')       'wsl-bootstrap.ps1'
-
-Invoke-IfScriptExists (Join-Path $RepoRoot 'scripts\lab-up.ps1')              'lab-up.ps1'
-
-# Final banner reflects actual state flag under INSTALL_ROOT
-$ReadyFlag = Join-Path $StateDir 'lab-ready.txt'
-Write-Host ""
-if (Test-Path $ReadyFlag) {
-    Write-Host 'All requested steps completed.' -ForegroundColor Green
-} else {
-    Write-Host 'Host/WSL prep completed; lab build steps may still be in progress/pending.' -ForegroundColor Yellow
-    Write-Host 'See lab-up.ps1 output for details.' -ForegroundColor Yellow
-}
-Stop-Transcript | Out-Null
 Read-Host 'Press ENTER to exit' | Out-Null

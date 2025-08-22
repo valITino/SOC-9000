@@ -4,7 +4,6 @@ autoinstall:
   identity:
     hostname: containerhost
     username: labadmin
-    # required by autoinstall; SSH password login stays OFF
     password: "$6$soc9000salt$3lw9WQteXTDh5dcIhNazz8ZsD8q5n59ReX.Jo2x96nLbu2tH5cMHSdrJNSDIWlfKRQzQJua4JXF0CwprHLBQh0"
   ssh:
     install-server: true
@@ -13,7 +12,7 @@ autoinstall:
     users:
       - name: labadmin
         ssh_authorized_keys:
-          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDuGOaENVxlnCCcMBXffelKrmpBRi6jrCt1w4/s2tH+f liamo@CrHackHead
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5soJ6TP+ly7X17yzKhygY3aEboWkftGmpa6yqE0Ske liamo@CrHackHead
         groups: [sudo]
         shell: /bin/bash
         sudo: ALL=(ALL) NOPASSWD:ALL

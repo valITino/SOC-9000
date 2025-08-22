@@ -41,6 +41,11 @@ type = number
 default = 16384
 }
 
+variable "headless" {
+type = bool
+default = true # preserves your current 'headless' default
+}
+
 # Bind the HTTP seed server to the host IP on VMnet8 (passed by the build script)
 variable "vmnet8_host_ip" { type = string }
 
@@ -51,7 +56,12 @@ source "vmware-iso" "ubuntu2204" {
   iso_checksum             = "none"                     # (optionally set a real sha256)
 
   firmware                 = "bios"
-  headless                 = true
+  headless                 = var.headless
+  vnc_disable_password     = true
+  vnc_bind_address         = "127.0.0.1"
+  vnc_port_min             = 5901
+  vnc_port_max             = 5901
+  guest_os_type            = "ubuntu-64"
 
   # Serve NoCloud seed over HTTP from the repo's http/ folder
   http_directory           = "${path.root}/http"
@@ -76,6 +86,11 @@ source "vmware-iso" "ubuntu2204" {
 
   vmx_data = {
     "bios.bootDelay" = "3000"
+    "msg.autoanswer"             = "TRUE"     # auto-dismiss "moved/copied" & similar prompts
+    "RemoteDisplay.vnc.enabled"  = "TRUE"     # force VNC even if Workstation hesitates
+    "RemoteDisplay.vnc.port"     = "5901"
+    "RemoteDisplay.vnc.password" = ""         # blank password since packer connects locally
+    "RemoteDisplay.vnc.autoport" = "FALSE"
   }
 
   # Robust GRUB edit (no quotes; slower typing)
