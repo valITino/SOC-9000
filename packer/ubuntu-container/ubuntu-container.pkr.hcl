@@ -41,11 +41,6 @@ type = number
 default = 16384
 }
 
-variable "headless" {
-type = bool
-default = false # preserves your current 'headless' default
-}
-
 # Bind the HTTP seed server to the host IP on VMnet8 (passed by the build script)
 variable "vmnet8_host_ip" { type = string }
 
@@ -56,7 +51,7 @@ source "vmware-iso" "ubuntu2204" {
   iso_checksum             = "none"                     # (optionally set a real sha256)
 
   firmware                 = "bios"
-  headless                 = var.headless
+  headless                 = true
   vnc_bind_address         = "127.0.0.1"
 
   # Serve NoCloud seed over HTTP from the repo's http/ folder

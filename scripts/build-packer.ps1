@@ -1,12 +1,10 @@
-# scripts/build-packer.ps1 — PS5.1-safe, headless-aware, progress+timeout, artifact gate
 [CmdletBinding()]
 param(
   [ValidateSet('ubuntu','windows')]
   [string]$Only,
   [int]$UbuntuMaxMinutes  = 45,
   [int]$WindowsMaxMinutes = 120,
-  [switch]$Headless,
-  [switch]$Gui
+  [switch]$Headless
 )
 
 Set-StrictMode -Version Latest
@@ -270,20 +268,8 @@ New-Directory $UbuntuOut
 New-Directory $WindowsOut
 
 # ---------- Runtime headless preference (CLI > ENV > HCL default) ----------
-if ($Headless.IsPresent -and $Gui.IsPresent) {
-  throw "Specify only one of -Headless or -Gui."
-}
-
-$HeadlessPref = $null
-if     ($Headless.IsPresent) { $HeadlessPref = $true }
-elseif ($Gui.IsPresent)      { $HeadlessPref = $false }
-elseif ($env:PACKER_HEADLESS) {
-  try { $HeadlessPref = [System.Convert]::ToBoolean($env:PACKER_HEADLESS) } catch { $HeadlessPref = $null }
-}
-
-if ($HeadlessPref -ne $null) {
-  Write-Info ("Headless preference: {0}" -f ($(if($HeadlessPref){'true'}else{'false'})))
-}
+$HeadlessPref = $Headless.IsPresent
+Write-Info ("Forcing headless mode: {0}" -f $HeadlessPref)
 
 # ---------- Packer run helpers ----------
 function Invoke-PackerInit([string]$tpl,[string]$log){
@@ -395,14 +381,13 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
       vmnet8_host_ip       = $Vmnet8Host
       ssh_username         = 'labadmin'
     }
-    if ($HeadlessPref -ne $null) { $varsU['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
 
     Invoke-PackerInit     $Utpl $logU
     Invoke-PackerValidate $Utpl $logU $varsU
     Invoke-PackerBuild    $Utpl $logU $varsU $UbuntuMaxMinutes
   }
   finally {
-    # Restore the committed file (with __PUBKEY__) so secrets aren’t left in repo
+    # Restore the committed file (with __PUBKEY__) so secrets aren't left in repo
     [System.IO.File]::WriteAllText($udPath, $origUd, $utf8NoBom)
     Write-Info "Restored template user-data (placeholder version) at $udPath"
   }
@@ -417,6 +402,7 @@ if ($Only -eq 'windows' -or -not $Only) {
   $varsW = @{
     iso_path   = $isoWindows
     output_dir = $WindowsOut
+    headless   = 'true'
   }
   if ($HeadlessPref -ne $null) { $varsW['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
 

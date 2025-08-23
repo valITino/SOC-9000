@@ -1,7 +1,6 @@
 <#
 .SYNOPSIS
-  Configure VMware Workstation VMnets deterministically with approved verbs.
-  - NAT on VMnet8 (default 192.168.37.0/24)
+  Configure VMware Workstation host-only VMnets deterministically with approved verbs.
   - Host-only on VMnet9..12 (default 172.22.10/20/30/40.0/24)
   - Optional pruning of extra host-only vmnets
 
@@ -13,9 +12,8 @@
 param(
     [switch]$Preview,
     [bool]$PruneExtras = $true,
-    [string]$NatSubnet,
-    [int[]]$HostOnlyIds,
-    [string[]]$HostOnlySubnets
+    [int[]]$HostOnlyIds = @(9,10,11,12),
+    [string[]]$HostOnlySubnets = @("172.22.10.0","172.22.20.0","172.22.30.0","172.22.40.0")
 )
 
 function Test-Admin {
@@ -32,14 +30,13 @@ if (-not (Test-Admin)) {
 $ErrorActionPreference = 'Stop'
 
 function Get-VNetLibPath {
-    foreach ($p in @(
+    $paths = @(
         "C:\Program Files\VMware\VMware Workstation\vnetlib64.exe",
         "C:\Program Files (x86)\VMware\VMware Workstation\vnetlib64.exe"
-    )) {
+    )
+    foreach ($p in $paths) {
         if (Test-Path $p) { return $p }
     }
-    $cmd = Get-Command vnetlib64 -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
     throw "vnetlib64.exe not found. Install VMware Workstation Pro 17+."
 }
 
@@ -50,7 +47,7 @@ function Invoke-VMnet {
     param(
         [Parameter(Mandatory)]
         [string[]]$CliArgs,
-        [int[]]$AllowedExitCodes = @(0,1,12), # 1 ~ benign no-op on some hosts; 12 ~ already exists
+        [int[]]$AllowedExitCodes = @(0,1,12),
         [switch]$Silent
     )
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -70,12 +67,12 @@ function Invoke-VMnet {
     if (-not $AllowedExitCodes.Contains($code)) {
         if (-not $Silent) {
             Write-Warning "vnetlib64 -- $($CliArgs -join ' ') exited $code"
-            if ($stdout) { Write-Verbose $stdout }
-            if ($stderr) { Write-Verbose $stderr }
+            if ($stdout) { Write-Verbose "STDOUT: $stdout" }
+            if ($stderr) { Write-Verbose "STDERR: $stderr" }
         }
-        return @{ ExitCode = $code; Stdout = $stdout; Stderr = $stderr; Ok = $false }
+        return @{ ExitCode = $code; Ok = $false }
     }
-    return @{ ExitCode = $code; Stdout = $stdout; Stderr = $stderr; Ok = $true }
+    return @{ ExitCode = $code; Ok = $true }
 }
 
 function Wait-VMnetAdapterUp {
@@ -92,45 +89,25 @@ function Wait-VMnetAdapterUp {
     }
 }
 
-function Set-VMnetNAT {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-    param([string]$Subnet, [string]$Mask = "255.255.255.0")
-    $id = 8
-    $alias = "VMware Network Adapter VMnet$id"
-    if ($PSCmdlet.ShouldProcess("vmnet$id", "Configure NAT $Subnet/$Mask")) {
-        Invoke-VMnet -CliArgs @('add','vnet',"vmnet$id") | Out-Null
-        Invoke-VMnet -CliArgs @('add','adapter',"vmnet$id") | Out-Null
-        Invoke-VMnet -CliArgs @('set','vnet',"vmnet$id",'addr',$Subnet) | Out-Null
-        Invoke-VMnet -CliArgs @('set','vnet',"vmnet$id",'mask',$Mask) | Out-Null
-        Invoke-VMnet -CliArgs @('add','nat',"vmnet$id") | Out-Null
-        # Host .1
-        $hostIp = ([IPAddress]::Parse($Subnet)).GetAddressBytes()
-        $hostIp[-1] = 1
-        $ipStr = ($hostIp | ForEach-Object { $_ }) -join '.'
-        Invoke-VMnet -CliArgs @('set','adapter',"vmnet$id",'addr',$ipStr) | Out-Null
-        # NAT internal .2
-        Invoke-VMnet -CliArgs @('set','nat',"vmnet$id",'internalipaddr',($Subnet -replace '\.0$','.2')) | Out-Null
-        Invoke-VMnet -CliArgs @('add','dhcp',"vmnet$id") | Out-Null
-        Invoke-VMnet -CliArgs @('update','adapter',"vmnet$id") | Out-Null
-        Invoke-VMnet -CliArgs @('update','nat',"vmnet$id") | Out-Null
-        Invoke-VMnet -CliArgs @('update','dhcp',"vmnet$id") | Out-Null
-        Wait-VMnetAdapterUp -Alias $alias
-    }
-}
-
 function Set-VMnetHostOnly {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Medium')]
-    param([int]$Id, [string]$Subnet, [string]$Mask = "255.255.255.0")
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [int]$Id,
+        [Parameter(Mandatory)]
+        [string]$Subnet,
+        [string]$Mask = "255.255.255.0"
+    )
     $alias = "VMware Network Adapter VMnet$Id"
     if ($PSCmdlet.ShouldProcess("vmnet$Id", "Configure Host-only $Subnet/$Mask")) {
         Invoke-VMnet -CliArgs @('add','vnet',"vmnet$Id") | Out-Null
         Invoke-VMnet -CliArgs @('add','adapter',"vmnet$Id") | Out-Null
         Invoke-VMnet -CliArgs @('set','vnet',"vmnet$Id",'addr',$Subnet) | Out-Null
         Invoke-VMnet -CliArgs @('set','vnet',"vmnet$Id",'mask',$Mask) | Out-Null
-        # host .1
-        $hostIp = ([IPAddress]::Parse($Subnet)).GetAddressBytes()
-        $hostIp[-1] = 1
-        $ipStr = ($hostIp | ForEach-Object { $_ }) -join '.'
+        
+        $hostIp = ([IPAddress]$Subnet).GetAddressBytes()
+        $hostIp[3] = 1
+        $ipStr = $hostIp -join '.'
         Invoke-VMnet -CliArgs @('set','adapter',"vmnet$Id",'addr',$ipStr) | Out-Null
         Invoke-VMnet -CliArgs @('update','adapter',"vmnet$Id") | Out-Null
         Wait-VMnetAdapterUp -Alias $alias
@@ -138,144 +115,78 @@ function Set-VMnetHostOnly {
 }
 
 function Remove-VMnetHostOnly {
-    [CmdletBinding(SupportsShouldProcess=$true, ConfirmImpact='Low')]
-    param([int]$Id)
+    [CmdletBinding(SupportsShouldProcess)]
+    param([Parameter(Mandatory)][int]$Id)
     if ($PSCmdlet.ShouldProcess("vmnet$Id", "Remove host-only vnet+adapter")) {
-        Invoke-VMnet -CliArgs @('remove','adapter',"vmnet$Id") -AllowedExitCodes @(0,12,1) -Silent | Out-Null
-        Invoke-VMnet -CliArgs @('remove','vnet',"vmnet$Id")    -AllowedExitCodes @(0,12,1) -Silent | Out-Null
+        Invoke-VMnet -CliArgs @('remove','adapter',"vmnet$Id") -Silent | Out-Null
+        Invoke-VMnet -CliArgs @('remove','vnet',"vmnet$Id") -Silent | Out-Null
     }
 }
 
-# Resolve target IDs / subnets
-if (-not $HostOnlyIds -or $HostOnlyIds.Count -eq 0) {
-    $envIds = $env:HOSTONLY_VMNET_IDS
-    if ($envIds) {
-        $HostOnlyIds = @($envIds -split ',' | ForEach-Object { [int]($_.Trim()) })
-    } else {
-        $HostOnlyIds = 9,10,11,12
+function Ensure-VMwareServices {
+    $services = 'VMware NAT Service', 'VMnetDHCP'
+    foreach ($svc in $services) {
+        try {
+            $service = Get-Service -Name $svc -ErrorAction Stop
+            if ($service.Status -ne 'Running') {
+                Start-Service -Name $svc -ErrorAction Stop
+                Write-Host "Started service: $svc"
+            }
+            if ($service.StartType -ne 'Automatic') {
+                Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
+            }
+        }
+        catch {
+            Write-Warning "Could not manage service $svc : $_"
+        }
     }
 }
-if (-not $HostOnlySubnets -or $HostOnlySubnets.Count -eq 0) {
-    $HostOnlySubnets = @("172.22.10.0","172.22.20.0","172.22.30.0","172.22.40.0")
-}
 
+# Validate input
 if ($HostOnlyIds.Count -ne $HostOnlySubnets.Count) {
     throw "HostOnlyIds count ($($HostOnlyIds.Count)) must equal HostOnlySubnets count ($($HostOnlySubnets.Count))."
 }
 
 Write-Host "=== Plan ===" -ForegroundColor Cyan
-Write-Host ("NAT (vmnet8): {0}/24" -f $NatSubnet)
 for ($i=0; $i -lt $HostOnlyIds.Count; $i++) {
     Write-Host ("Host-only (vmnet{0}): {1}/24" -f $HostOnlyIds[$i], $HostOnlySubnets[$i])
 }
-if ($PruneExtras) { Write-Host "Prune extras: ENABLED" } else { Write-Host "Prune extras: DISABLED" }
+Write-Host "Prune extras: $(if ($PrumeExtras) {'ENABLED'} else {'DISABLED'})"
 Write-Host ""
 
 if ($Preview) {
-    Write-Host "Preview only. No changes made."
+    Write-Host "Preview only. No changes made." -ForegroundColor Yellow
     exit 0
 }
 
-function Ensure-VMwareServices {
-  foreach ($svc in 'VMware NAT Service','VMnetDHCP') {
-    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    if ($s) {
-      if ($s.StartType -ne 'Automatic') { Set-Service -Name $svc -StartupType Automatic -ErrorAction SilentlyContinue }
-      if ($s.Status -ne 'Running')      { Start-Service -Name $svc -ErrorAction SilentlyContinue }
-    }
-  }
-}
-
-# 1) Ensure NAT on vmnet8
-if ($NatSubnet) {
-  Write-Host "Configuring NAT on VMnet$NatVmnetId to $NatSubnet/24"
-  Set-VMnetNAT -Id $NatVmnetId -Subnet $NatSubnet
-} else {
-  Write-Host "NAT auto mode: leaving VMnet$NatVmnetId as-is (no forced subnet)."
-}
-
-# 2) Optionally remove other host-only vmnets to avoid pile-ups
+# Remove extra host-only networks
 if ($PruneExtras) {
-    $existingHostOnlyIds = @()
-    Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue | ForEach-Object {
-        if ($_.Name -match 'VMnet(\d+)$') {
+    Write-Host "Removing extra host-only networks..."
+    $existingAdapters = Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue
+    $keepIds = 0,1,8 + $HostOnlyIds  # Always keep VMnet0 (Bridged), VMnet1 (Host-only), and VMnet8 (NAT)
+    foreach ($adapter in $existingAdapters) {
+        if ($adapter.Name -match 'VMnet(\d+)') {
             $id = [int]$Matches[1]
-            if ($id -ne 0 -and $id -ne 8) { $existingHostOnlyIds += $id }
+            if ($id -notin $keepIds) {
+                Remove-VMnetHostOnly -Id $id
+            }
         }
     }
-    $toKeep = $HostOnlyIds
-    $toRemove = ($existingHostOnlyIds | Where-Object { $toKeep -notcontains $_ }) | Sort-Object -Unique
-    foreach ($rid in $toRemove) {
-        Remove-VMnetHostOnly -Id $rid
-    }
 }
 
-# 3) Lay down host-only vmnets
+# Configure host-only networks
 for ($i=0; $i -lt $HostOnlyIds.Count; $i++) {
+    Write-Host "Configuring host-only on VMnet$($HostOnlyIds[$i]) to $($HostOnlySubnets[$i])/24"
     Set-VMnetHostOnly -Id $HostOnlyIds[$i] -Subnet $HostOnlySubnets[$i]
 }
 
+# Ensure services are running
 Ensure-VMwareServices
 
+# Display results
 Write-Host "`n=== Summary ===" -ForegroundColor Cyan
 Get-NetAdapter -Name "VMware Network Adapter VMnet*" -ErrorAction SilentlyContinue |
-    Sort-Object Name | Select-Object Name, Status, MacAddress | Format-Table
+    Sort-Object Name | Select-Object Name, Status, LinkSpeed | Format-Table
 
 Get-NetIPAddress -InterfaceAlias "VMware Network Adapter VMnet*" -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Select-Object InterfaceAlias, IPAddress, PrefixLength | Format-Table
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
