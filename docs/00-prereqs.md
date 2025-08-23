@@ -18,7 +18,7 @@ Goal: Prepare Windows 11 + VMware Workstation for a pfSense-routed, k3s-managed,
 
 ## Networks (Virtual Network Editor)
 
-The `scripts/host-prepare.ps1` helper uses VMware's `vnetlib.exe` (or `vmnetcfg.exe`/`vmnetcfgcli.exe` when available) to create and verify the required VMnets automatically. If the tools are missing or configuration fails, it launches **Virtual Network Editor** (`vmnetcfg.exe`) and pauses until you confirm the networks are ready:
+Use `scripts/configure-vmnet.ps1` to create or update the required VMnets. The script leverages VMware's `vnetlib.exe` (or `vmnetcfg.exe`/`vmnetcfgcli.exe` when available) and falls back to launching **Virtual Network Editor** (`vmnetcfg.exe`) if automation fails. After configuration, run `scripts/verify-networking.ps1` to confirm adapters, services and DHCP pools:
 
 - `VMnet8` — NAT (DHCP ON)
 - `VMnet20` — MGMT `172.22.10.0/24` (DHCP OFF)
@@ -61,7 +61,7 @@ If winget is missing or a package fails to install, the script writes an error a
 
 ## SSH key
 
-`scripts/host-prepare.ps1` ensures `%USERPROFILE%\.ssh\id_ed25519` exists, generating a new key if needed and printing its location. To copy the key into WSL (recommended):
+Ensure `%USERPROFILE%\.ssh\id_ed25519` exists, generating a new key if needed. To copy the key into WSL (recommended):
 
 ```powershell
 pwsh -File .\scripts\copy-ssh-key-to-wsl.ps1
@@ -77,7 +77,8 @@ ssh-keygen -t ed25519 -C "soc-9000" -f $env:USERPROFILE\.ssh\id_ed25519
 
 ```powershell
 # (after cloning the repo)
-pwsh -ExecutionPolicy Bypass -File .\scripts\host-prepare.ps1
+pwsh -ExecutionPolicy Bypass -File .\scripts\configure-vmnet.ps1
+pwsh -ExecutionPolicy Bypass -File .\scripts\verify-networking.ps1
 ```
 
 Run the setup script to perform the clone, ISO download, and bring‑up in one step:

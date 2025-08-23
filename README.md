@@ -200,7 +200,7 @@ sudo apt update && sudo apt -y install ansible git jq curl
 
 ### VMware nets (host-only)
 
-Created and verified automatically by `scripts/host-prepare.ps1` (uses VMware's `vnetlib.exe` or `vmnetcfg.exe`/`vmnetcfgcli.exe` when available). If the utilities are missing or configuration fails, the script launches **Virtual Network Editor** (`vmnetcfg.exe`) and waits for confirmation before continuing:
+Use `scripts/configure-vmnet.ps1` to create or update the required host-only networks and `scripts/verify-networking.ps1` to confirm adapter and DHCP settings. The configuration script uses VMware's `vnetlib.exe` (or `vmnetcfg.exe`/`vmnetcfgcli.exe` when available) and falls back to launching **Virtual Network Editor** (`vmnetcfg.exe`) if automation fails:
 
 - VMnet20 = 172.22.10.0/24 (MGMT)
 - VMnet21 = 172.22.20.0/24 (SOC)

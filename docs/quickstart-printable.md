@@ -6,7 +6,7 @@
 
 **ISOs:** ubuntu-22.04.iso, win11-eval.iso, pfsense.iso (+ optional nessus_latest_amd64.deb)
 
-**VMware nets:** VMnet20=172.22.10.0/24, VMnet21=172.22.20.0/24, VMnet22=172.22.30.0/24, VMnet23=172.22.40.0/24, VMnet8=NAT (created & verified by `scripts/host-prepare.ps1`)
+**VMware nets:** VMnet20=172.22.10.0/24, VMnet21=172.22.20.0/24, VMnet22=172.22.30.0/24, VMnet23=172.22.40.0/24, VMnet8=NAT (configure with `scripts/configure-vmnet.ps1`, verify with `scripts/verify-networking.ps1`)
 
 **Repo:**
 
