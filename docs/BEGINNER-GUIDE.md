@@ -112,7 +112,7 @@ The `init` target copies `.env.example` to `.env`.  Open `.env` in Notepad, adju
 
 ## 7. Verify VMware host‑only networks
 
-Run `pwsh -File .\scripts\host-prepare.ps1` to auto-create and verify the required VMnets (uses `vnetlib.exe` or `vmnetcfg.exe`/`vmnetcfgcli.exe` when possible). If the tools are missing or configuration fails, the script opens **Virtual Network Editor** (`vmnetcfg.exe`) and waits for you to confirm these networks exist:
+Run `pwsh -File .\scripts\configure-vmnet.ps1` to create or update the host‑only networks, then confirm the layout with `pwsh -File .\scripts\verify-networking.ps1`. The configuration script uses `vnetlib.exe` (or `vmnetcfg.exe`/`vmnetcfgcli.exe` when available) and launches **Virtual Network Editor** (`vmnetcfg.exe`) if automation fails:
 
    - `VMnet20` → 172.22.10.0/24 (MGMT)
    - `VMnet21` → 172.22.20.0/24 (SOC)
