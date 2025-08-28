@@ -1,1 +1,0 @@
-Unzip this repository to `E:\SOC-9000\SOC-9000` and follow `docs/BEGINNER-GUIDE.md` for a step‑by‑step walkthrough.

@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
-	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=en-US&Locale=en-US&Keyboard=00000409&UseKeyboard2=true&Locale2=de-CH&Keyboard2=00000807&UseKeyboard3=true&Locale3=fr-CH&Keyboard3=0000100c&GeoLocation=223&ProcessorArchitecture=amd64&BypassNetworkCheck=true&ComputerNameMode=Custom&ComputerName=VICTIM-VM&CompactOsMode=Never&TimeZoneMode=Implicit&PartitionMode=Unattended&PartitionLayout=GPT&EspSize=300&RecoveryMode=Partition&RecoverySize=1000&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Automatic&PEMode=Default&UserAccountMode=Unattended&AccountName0=labadmin&AccountDisplayName0=labadmin&AccountPassword0=ChangeMe_S0C9000%21&AccountGroup0=Administrators&AccountName1=User&AccountDisplayName1=&AccountPassword1=&AccountGroup1=Users&AccountName2=Admin&AccountDisplayName2=&AccountPassword2=&AccountGroup2=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=None&ShowFileExtensions=true&ClassicContextMenu=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Box&TaskbarIconsMode=Default&DisableWidgets=true&LeftTaskbar=true&HideTaskViewButton=true&DisableBingResults=true&StartTilesMode=Default&StartPinsMode=Empty&EnableLongPaths=true&AllowPowerShellScripts=true&PreventAutomaticReboot=true&PreventDeviceEncryption=true&HideEdgeFre=true&EffectsMode=Default&DesktopIconsMode=Default&StartFoldersMode=Default&WifiMode=Skip&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Default&ColorMode=Default&WallpaperMode=Default&LockScreenMode=Default&WdacMode=Skip-->
+	<!--https://schneegans.de/windows/unattend-generator/?LanguageMode=Unattended&UILanguage=en-GB&Locale=en-US&Keyboard=00000409&UseKeyboard2=true&Locale2=de-CH&Keyboard2=00000807&UseKeyboard3=true&Locale3=fr-CH&Keyboard3=0000100c&GeoLocation=223&ProcessorArchitecture=amd64&BypassRequirementsCheck=true&BypassNetworkCheck=true&ComputerNameMode=Custom&ComputerName=VICTIM-VM&CompactOsMode=Never&TimeZoneMode=Implicit&PartitionMode=Unattended&PartitionLayout=GPT&EspSize=300&RecoveryMode=Partition&RecoverySize=1000&DiskAssertionMode=Skip&WindowsEditionMode=Generic&WindowsEdition=pro&InstallFromMode=Name&InstallFromName=Windows+11+Pro&PEMode=Default&UserAccountMode=Unattended&AccountName0=labadmin&AccountDisplayName0=labadmin&AccountPassword0=ChangeMe_S0C9000%21&AccountGroup0=Administrators&AutoLogonMode=Own&PasswordExpirationMode=Unlimited&LockoutMode=Default&HideFiles=None&ShowFileExtensions=true&ClassicContextMenu=true&LaunchToThisPC=true&ShowEndTask=true&TaskbarSearch=Box&TaskbarIconsMode=Default&DisableWidgets=true&LeftTaskbar=true&HideTaskViewButton=true&DisableBingResults=true&StartTilesMode=Default&StartPinsMode=Empty&DisableDefender=true&DisableWindowsUpdate=true&DisableUac=true&DisableSac=true&DisableSmartScreen=true&EnableLongPaths=true&EnableRemoteDesktop=true&AllowPowerShellScripts=true&PreventAutomaticReboot=true&PreventDeviceEncryption=true&HideEdgeFre=true&ProcessAudit=true&ProcessAuditCommandLine=true&EffectsMode=Default&DesktopIconsMode=Default&StartFoldersMode=Default&WifiMode=Skip&ExpressSettings=DisableAll&LockKeysMode=Skip&StickyKeysMode=Default&ColorMode=Default&WallpaperMode=Default&LockScreenMode=Default&FirstLogonScript0=%23+FirstLogon.ps1+%E2%80%94+enable+WinRM+%28HTTP%2F5985%29+for+Packer%0D%0A%24log+%3D+%27C%3A%5CWindows%5CSetup%5CScripts%5CFirstLogon.log%27%0D%0AStart-Transcript+-Path+%24log+-Append%0D%0A%0D%0A%23+Make+the+network+profile+Private+%28firewall+rules+open+on+Private%2FDomain%29%0D%0Atry+%7B%0D%0A++Get-NetConnectionProfile+%7C+ForEach-Object+%7B%0D%0A++++if+%28%24_.NetworkCategory+-ne+%27Private%27%29+%7B%0D%0A++++++Set-NetConnectionProfile+-InterfaceIndex+%24_.InterfaceIndex+-NetworkCategory+Private+-ErrorAction+SilentlyContinue%0D%0A++++%7D%0D%0A++%7D%0D%0A%7D+catch+%7B%7D%0D%0A%0D%0A%23+Enable+WinRM+%2B+PSRemoting+and+ensure+service%2Flistener+exist%0D%0A%26+winrm+quickconfig+-q+2%3E%24null%0D%0Asc.exe+config+WinRM+start%3D+auto+%7C+Out-Null%0D%0AStart-Service+WinRM%0D%0AEnable-PSRemoting+-Force%0D%0A%0D%0A%23+Allow+Basic+%2B+unencrypted+auth+%28Packer+defaults%29%0D%0ASet-Item+-Path+WSMan%3A%5Clocalhost%5CService%5CAuth%5CBasic+-Value+%24true+-Force%0D%0ASet-Item+-Path+WSMan%3A%5Clocalhost%5CService%5CAllowUnencrypted+-Value+%24true+-Force%0D%0A%0D%0A%23+Ensure+HTTP+listener+on+all+addresses+exists%0D%0A%24http+%3D+Get-ChildItem+WSMan%3A%5Clocalhost%5CListener+%7C+Where-Object+%7B+%24_.Keys+-match+%27Transport%3DHTTP%27+%7D%0D%0Aif+%28-not+%24http%29+%7B+New-Item+-Path+WSMan%3A%5Clocalhost%5CListener+-Transport+HTTP+-Address+*+-Force+%7C+Out-Null+%7D%0D%0A%0D%0A%23+Open+firewall+for+WinRM%0D%0Anetsh+advfirewall+firewall+set+rule+group%3D%22Windows+Remote+Management%22+new+enable%3Dyes+%7C+Out-Null%0D%0A%0D%0A%23+%28Optional%29+avoid+remote+UAC+filtering+for+local+admin+over+some+channels%0D%0Areg+add+%22HKLM%5CSOFTWARE%5CMicrosoft%5CWindows%5CCurrentVersion%5CPolicies%5CSystem%22+%2Fv+LocalAccountTokenFilterPolicy+%2Ft+REG_DWORD+%2Fd+1+%2Ff+%7C+Out-Null%0D%0A%0D%0A%23+Wait+until+we+have+a+real+IPv4+and+5985+is+listening%0D%0A%24deadline+%3D+%28Get-Date%29.AddMinutes%285%29%0D%0Ado+%7B%0D%0A++%24ipReady+++%3D+%40%28Get-NetIPAddress+-AddressFamily+IPv4+-PrefixOrigin+Dhcp%2CManual+%7C%0D%0A++++++++++++++++Where-Object+%7B+%24_.IPAddress+-notlike+%27169.254*%27+%7D%29.Count+-gt+0%0D%0A++%24portReady+%3D+%28Get-NetTCPConnection+-LocalPort+5985+-State+Listen+-ErrorAction+SilentlyContinue%29+-ne+%24null%0D%0A++if+%28%24ipReady+-and+%24portReady%29+%7B+break+%7D%0D%0A++Start-Sleep+-Seconds+3%0D%0A%7D+while+%28Get-Date%29+-lt+%24deadline%0D%0A%0D%0A%23+Stop+autologon+after+this+run+%28you+already+log+in+once+via+unattend%29%0D%0ASet-ItemProperty+-LiteralPath+%27Registry%3A%3AHKLM%5CSOFTWARE%5CMicrosoft%5CWindows+NT%5CCurrentVersion%5CWinlogon%27+%60%0D%0A++-Name+%27AutoLogonCount%27+-Type+DWord+-Value+0+-Force%0D%0A%0D%0AStop-Transcript&FirstLogonScriptType0=Ps1&FirstLogonScript1=%0D%0AWrite-Host+%22Checking+for+VMware+Tools...%22%0D%0A%0D%0A%23+Check+if+VMware+Tools+are+already+installed%0D%0Aif+%28Get-Service+-Name+VMTools+-ErrorAction+SilentlyContinue%29+%7B%0D%0A++++Write-Host+%22VMware+Tools+are+already+installed%22%0D%0A++++exit+0%0D%0A%7D%0D%0A%0D%0A%23+Try+to+install+from+CD-ROM%0D%0A%24cdDrive+%3D+Get-WmiObject+-Class+Win32_CDROMDrive+%7C+Select-Object+-First+1%0D%0Aif+%28%24cdDrive%29+%7B%0D%0A++++%24driveLetter+%3D+%24cdDrive.Drive%0D%0A++++%24setupPath+%3D+Join-Path+%24driveLetter+%22setup64.exe%22%0D%0A++++%0D%0A++++if+%28Test-Path+%24setupPath%29+%7B%0D%0A++++++++Write-Host+%22Installing+VMware+Tools+from+%24setupPath%22%0D%0A++++++++Start-Process+-FilePath+%24setupPath+-ArgumentList+%22%2FS+%2Fv+%60%2Fqn%22+-Wait%0D%0A++++++++Write-Host+%22VMware+Tools+installation+completed%22%0D%0A++++%7D+else+%7B%0D%0A++++++++Write-Host+%22VMware+Tools+setup+not+found+on+CD-ROM%22%0D%0A++++%7D%0D%0A%7D+else+%7B%0D%0A++++Write-Host+%22No+CD-ROM+drive+found%22%0D%0A%7D&FirstLogonScriptType1=Ps1&FirstLogonScript2=Write-Host+%22Disabling+sleep%2Fhibernation...%22%0D%0Apowercfg+-h+off%0D%0Apowercfg+%2Fx+-standby-timeout-ac+0%0D%0Apowercfg+%2Fx+-hibernate-timeout-ac+0%0D%0Apowercfg+%2Fx+-disk-timeout-ac+0&FirstLogonScriptType2=Ps1&WdacMode=Skip-->
 	<settings pass="offlineServicing"></settings>
 	<settings pass="windowsPE">
 		<component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-			<UILanguage>en-US</UILanguage>
+			<UILanguage>en-GB</UILanguage>
 		</component>
 		<component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
 			<ImageInstall>
 				<OSImage>
 					<Compact>false</Compact>
+					<InstallFrom>
+						<MetaData wcm:action="add">
+							<Key>/IMAGE/NAME</Key>
+							<Value>Windows 11 Pro</Value>
+						</MetaData>
+					</InstallFrom>
 					<InstallTo>
 						<DiskID>0</DiskID>
 						<PartitionID>3</PartitionID>
@@ -27,19 +33,83 @@
 			<RunSynchronous>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>1</Order>
-					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SELECT DISK=0&amp;echo:CLEAN&amp;echo:CONVERT GPT&amp;echo:CREATE PARTITION EFI SIZE=300&amp;echo:FORMAT QUICK FS=FAT32 LABEL=^"System^"&amp;echo:ASSIGN LETTER=S&amp;echo:CREATE PARTITION MSR SIZE=16&amp;echo:CREATE PARTITION PRIMARY)"</Path>
+					<Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>2</Order>
-					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SHRINK MINIMUM=1000&amp;echo:FORMAT QUICK FS=NTFS LABEL=^"Windows^"&amp;echo:ASSIGN LETTER=W&amp;echo:CREATE PARTITION PRIMARY&amp;echo:FORMAT QUICK FS=NTFS LABEL=^"Recovery^"&amp;echo:ASSIGN LETTER=R)"</Path>
+					<Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>3</Order>
-					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SET ID=^"de94bba4-06d1-4d40-a16a-bfd50179d6ac^"&amp;echo:GPT ATTRIBUTES=0x8000000000000001)"</Path>
+					<Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
 				</RunSynchronousCommand>
 				<RunSynchronousCommand wcm:action="add">
 					<Order>4</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SELECT DISK=0&amp;echo:CLEAN&amp;echo:CONVERT GPT&amp;echo:CREATE PARTITION EFI SIZE=300&amp;echo:FORMAT QUICK FS=FAT32 LABEL=^"System^"&amp;echo:ASSIGN LETTER=S&amp;echo:CREATE PARTITION MSR SIZE=16&amp;echo:CREATE PARTITION PRIMARY)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>5</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SHRINK MINIMUM=1000&amp;echo:FORMAT QUICK FS=NTFS LABEL=^"Windows^"&amp;echo:ASSIGN LETTER=W&amp;echo:CREATE PARTITION PRIMARY&amp;echo:FORMAT QUICK FS=NTFS LABEL=^"Recovery^"&amp;echo:ASSIGN LETTER=R)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>6</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\diskpart.txt" (echo:SET ID=^"de94bba4-06d1-4d40-a16a-bfd50179d6ac^"&amp;echo:GPT ATTRIBUTES=0x8000000000000001)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>7</Order>
 					<Path>cmd.exe /c "diskpart.exe /s "X:\diskpart.txt" &gt;&gt;"X:\diskpart.log" || ( type "X:\diskpart.log" &amp; echo diskpart encountered an error. &amp; pause &amp; exit /b 1 )"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>8</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:WScript.Echo ^"Scanning for newly created SYSTEM registry hive file to disable Windows Defender services...^"&amp;echo:Set fso = CreateObject(^"Scripting.FileSystemObject^"^))"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>9</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:Set existing = CreateObject(^"Scripting.Dictionary^"^)&amp;echo:Function Execute(command^)&amp;echo:WScript.Echo ^"Running command '^" + command + ^"'^"&amp;echo:Set shell = CreateObject(^"WScript.Shell^"^))"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>10</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:Set exec = shell.Exec(command^)&amp;echo:Do While exec.Status = 0&amp;echo:WScript.Sleep 100&amp;echo:Loop&amp;echo:WScript.Echo exec.StdOut.ReadAll&amp;echo:WScript.Echo exec.StdErr.ReadAll&amp;echo:Execute = exec.ExitCode)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>11</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:End Function&amp;echo:Function FindHiveFiles&amp;echo:Set FindHiveFiles = CreateObject(^"Scripting.Dictionary^"^)&amp;echo:For Each drive In fso.Drives&amp;echo:If drive.IsReady And drive.DriveLetter ^&lt;^&gt; ^"X^" Then)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>12</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:For Each folder In Array(^"$Windows.~BT\NewOS\Windows^", ^"Windows^"^)&amp;echo:file = fso.BuildPath(fso.BuildPath(drive.RootFolder, folder^), ^"System32\config\SYSTEM^"^))"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>13</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:If fso.FileExists(file^) And fso.FileExists(file + ^".LOG1^"^) And fso.FileExists(file + ^".LOG2^"^) Then&amp;echo:FindHiveFiles.Add file, Nothing&amp;echo:End If&amp;echo:Next&amp;echo:End If&amp;echo:Next&amp;echo:End Function)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>14</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:For Each file In FindHiveFiles&amp;echo:WScript.Echo ^"Will ignore file at '^" + file + ^"' because it was already present when Windows Setup started.^"&amp;echo:existing.Add file, Nothing&amp;echo:Next&amp;echo:Do)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>15</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:For Each file In FindHiveFiles&amp;echo:If Not existing.Exists(file^) Then&amp;echo:ret = 1&amp;echo:While ret ^&gt; 0&amp;echo:WScript.Sleep 500&amp;echo:ret = Execute(^"reg.exe LOAD HKLM\mount ^" + file^)&amp;echo:Wend)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>16</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:For Each service In Array(^"Sense^", ^"WdBoot^", ^"WdFilter^", ^"WdNisDrv^", ^"WdNisSvc^", ^"WinDefend^"^))"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>17</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:ret = Execute(^"reg.exe ADD HKLM\mount\ControlSet001\Services\^" + service + ^" /v Start /t REG_DWORD /d 4 /f^"^)&amp;echo:Next&amp;echo:ret = Execute(^"reg.exe UNLOAD HKLM\mount^"^))"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>18</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:WScript.Echo ^"Found and successfully modified SYSTEM registry hive file at '^" + file + ^"'. This window will now close.^"&amp;echo:WScript.Sleep 5000&amp;echo:Exit Do&amp;echo:End If&amp;echo:WScript.Sleep 1000&amp;echo:Next)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>19</Order>
+					<Path>cmd.exe /c "&gt;&gt;"X:\defender.vbs" (echo:Loop)"</Path>
+				</RunSynchronousCommand>
+				<RunSynchronousCommand wcm:action="add">
+					<Order>20</Order>
+					<Path>cmd.exe /c "start /MIN cscript.exe //E:vbscript X:\defender.vbs"</Path>
 				</RunSynchronousCommand>
 			</RunSynchronous>
 		</component>
@@ -80,7 +150,7 @@
 		<component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
 			<InputLocale>0409:00000409;0807:00000807;100c:0000100c</InputLocale>
 			<SystemLocale>en-US</SystemLocale>
-			<UILanguage>en-US</UILanguage>
+			<UILanguage>en-GB</UILanguage>
 			<UserLocale>en-US</UserLocale>
 		</component>
 		<component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -92,24 +162,6 @@
 						<Group>Administrators</Group>
 						<Password>
 							<Value>ChangeMe_S0C9000!</Value>
-							<PlainText>true</PlainText>
-						</Password>
-					</LocalAccount>
-					<LocalAccount wcm:action="add">
-						<Name>User</Name>
-						<DisplayName></DisplayName>
-						<Group>Users</Group>
-						<Password>
-							<Value></Value>
-							<PlainText>true</PlainText>
-						</Password>
-					</LocalAccount>
-					<LocalAccount wcm:action="add">
-						<Name>Admin</Name>
-						<DisplayName></DisplayName>
-						<Group>Administrators</Group>
-						<Password>
-							<Value></Value>
 							<PlainText>true</PlainText>
 						</Password>
 					</LocalAccount>
@@ -156,6 +208,71 @@ foreach( $file in $Document.unattend.Extensions.File ) {
     [System.IO.File]::WriteAllBytes( $path, $bytes );
 }
 		</ExtractScript>
+		<File path="C:\Windows\Setup\Scripts\PauseWindowsUpdate.ps1">
+$formatter = {
+	$args[0].ToString( "yyyy'-'MM'-'dd'T'HH':'mm':'ssK" );
+};
+$now = [datetime]::UtcNow;
+$start = &amp; $formatter $now;
+$end = &amp; $formatter $now.AddDays( 7 );
+
+$params = @{
+	LiteralPath = 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings';
+	Type = 'String';
+	Force = $true;
+};
+
+Set-ItemProperty @params -Name 'PauseFeatureUpdatesStartTime' -Value $start;
+Set-ItemProperty @params -Name 'PauseFeatureUpdatesEndTime' -Value $end;
+Set-ItemProperty @params -Name 'PauseQualityUpdatesStartTime' -Value $start;
+Set-ItemProperty @params -Name 'PauseQualityUpdatesEndTime' -Value $end;
+Set-ItemProperty @params -Name 'PauseUpdatesStartTime' -Value $start;
+Set-ItemProperty @params -Name 'PauseUpdatesExpiryTime' -Value $end;
+		</File>
+		<File path="C:\Windows\Setup\Scripts\PauseWindowsUpdate.xml">
+&lt;Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task"&gt;
+	&lt;Triggers&gt;
+		&lt;BootTrigger&gt;
+			&lt;Repetition&gt;
+				&lt;Interval&gt;P1D&lt;/Interval&gt;
+				&lt;StopAtDurationEnd&gt;false&lt;/StopAtDurationEnd&gt;
+			&lt;/Repetition&gt;
+			&lt;Enabled&gt;true&lt;/Enabled&gt;
+		&lt;/BootTrigger&gt;
+	&lt;/Triggers&gt;
+	&lt;Principals&gt;
+		&lt;Principal id="Author"&gt;
+			&lt;UserId&gt;S-1-5-19&lt;/UserId&gt;
+			&lt;RunLevel&gt;LeastPrivilege&lt;/RunLevel&gt;
+		&lt;/Principal&gt;
+	&lt;/Principals&gt;
+	&lt;Settings&gt;
+		&lt;MultipleInstancesPolicy&gt;IgnoreNew&lt;/MultipleInstancesPolicy&gt;
+		&lt;DisallowStartIfOnBatteries&gt;false&lt;/DisallowStartIfOnBatteries&gt;
+		&lt;StopIfGoingOnBatteries&gt;false&lt;/StopIfGoingOnBatteries&gt;
+		&lt;AllowHardTerminate&gt;true&lt;/AllowHardTerminate&gt;
+		&lt;StartWhenAvailable&gt;false&lt;/StartWhenAvailable&gt;
+		&lt;RunOnlyIfNetworkAvailable&gt;false&lt;/RunOnlyIfNetworkAvailable&gt;
+		&lt;IdleSettings&gt;
+			&lt;StopOnIdleEnd&gt;true&lt;/StopOnIdleEnd&gt;
+			&lt;RestartOnIdle&gt;false&lt;/RestartOnIdle&gt;
+		&lt;/IdleSettings&gt;
+		&lt;AllowStartOnDemand&gt;true&lt;/AllowStartOnDemand&gt;
+		&lt;Enabled&gt;true&lt;/Enabled&gt;
+		&lt;Hidden&gt;false&lt;/Hidden&gt;
+		&lt;RunOnlyIfIdle&gt;false&lt;/RunOnlyIfIdle&gt;
+		&lt;WakeToRun&gt;false&lt;/WakeToRun&gt;
+		&lt;ExecutionTimeLimit&gt;PT72H&lt;/ExecutionTimeLimit&gt;
+		&lt;Priority&gt;7&lt;/Priority&gt;
+	&lt;/Settings&gt;
+	&lt;Actions Context="Author"&gt;
+		&lt;Exec&gt;
+			&lt;Command&gt;C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe&lt;/Command&gt;
+			&lt;Arguments&gt;-Command "Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\PauseWindowsUpdate.ps1' -Raw | Invoke-Expression;"&lt;/Arguments&gt;
+		&lt;/Exec&gt;
+	&lt;/Actions&gt;
+&lt;/Task&gt;
+		</File>
 		<File path="C:\Windows\Setup\Scripts\MoveActiveHours.vbs">
 HKLM = &amp;H80000002
 key = "SOFTWARE\Microsoft\WindowsUpdate\UX\Settings"
@@ -225,8 +342,94 @@ $key = 'Registry::HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start';
 New-Item -Path $key -ItemType 'Directory' -ErrorAction 'SilentlyContinue';
 Set-ItemProperty -LiteralPath $key -Name 'ConfigureStartPins' -Value $json -Type 'String';
 		</File>
+		<File path="C:\Windows\Setup\Scripts\unattend-01.ps1">
+# FirstLogon.ps1 &#x2014; enable WinRM (HTTP/5985) for Packer
+$log = 'C:\Windows\Setup\Scripts\FirstLogon.log'
+Start-Transcript -Path $log -Append
+
+# Make the network profile Private (firewall rules open on Private/Domain)
+try {
+  Get-NetConnectionProfile | ForEach-Object {
+    if ($_.NetworkCategory -ne 'Private') {
+      Set-NetConnectionProfile -InterfaceIndex $_.InterfaceIndex -NetworkCategory Private -ErrorAction SilentlyContinue
+    }
+  }
+} catch {}
+
+# Enable WinRM + PSRemoting and ensure service/listener exist
+&amp; winrm quickconfig -q 2&gt;$null
+sc.exe config WinRM start= auto | Out-Null
+Start-Service WinRM
+Enable-PSRemoting -Force
+
+# Allow Basic + unencrypted auth (Packer defaults)
+Set-Item -Path WSMan:\localhost\Service\Auth\Basic -Value $true -Force
+Set-Item -Path WSMan:\localhost\Service\AllowUnencrypted -Value $true -Force
+
+# Ensure HTTP listener on all addresses exists
+$http = Get-ChildItem WSMan:\localhost\Listener | Where-Object { $_.Keys -match 'Transport=HTTP' }
+if (-not $http) { New-Item -Path WSMan:\localhost\Listener -Transport HTTP -Address * -Force | Out-Null }
+
+# Open firewall for WinRM
+netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes | Out-Null
+
+# (Optional) avoid remote UAC filtering for local admin over some channels
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v LocalAccountTokenFilterPolicy /t REG_DWORD /d 1 /f | Out-Null
+
+# Wait until we have a real IPv4 and 5985 is listening
+$deadline = (Get-Date).AddMinutes(5)
+do {
+  $ipReady   = @(Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin Dhcp,Manual |
+                Where-Object { $_.IPAddress -notlike '169.254*' }).Count -gt 0
+  $portReady = (Get-NetTCPConnection -LocalPort 5985 -State Listen -ErrorAction SilentlyContinue) -ne $null
+  if ($ipReady -and $portReady) { break }
+  Start-Sleep -Seconds 3
+} while (Get-Date) -lt $deadline
+
+# Stop autologon after this run (you already log in once via unattend)
+Set-ItemProperty -LiteralPath 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' `
+  -Name 'AutoLogonCount' -Type DWord -Value 0 -Force
+
+Stop-Transcript
+		</File>
+		<File path="C:\Windows\Setup\Scripts\unattend-02.ps1">
+Write-Host "Checking for VMware Tools..."
+
+# Check if VMware Tools are already installed
+if (Get-Service -Name VMTools -ErrorAction SilentlyContinue) {
+    Write-Host "VMware Tools are already installed"
+    exit 0
+}
+
+# Try to install from CD-ROM
+$cdDrive = Get-WmiObject -Class Win32_CDROMDrive | Select-Object -First 1
+if ($cdDrive) {
+    $driveLetter = $cdDrive.Drive
+    $setupPath = Join-Path $driveLetter "setup64.exe"
+    
+    if (Test-Path $setupPath) {
+        Write-Host "Installing VMware Tools from $setupPath"
+        Start-Process -FilePath $setupPath -ArgumentList "/S /v `/qn" -Wait
+        Write-Host "VMware Tools installation completed"
+    } else {
+        Write-Host "VMware Tools setup not found on CD-ROM"
+    }
+} else {
+    Write-Host "No CD-ROM drive found"
+}
+		</File>
+		<File path="C:\Windows\Setup\Scripts\unattend-03.ps1">
+Write-Host "Disabling sleep/hibernation..."
+powercfg -h off
+powercfg /x -standby-timeout-ac 0
+powercfg /x -hibernate-timeout-ac 0
+powercfg /x -disk-timeout-ac 0
+		</File>
 		<File path="C:\Windows\Setup\Scripts\Specialize.ps1">
 $scripts = @(
+	{
+		reg.exe add "HKLM\SYSTEM\Setup\MoSetup" /v AllowUpgradesWithUnsupportedTPMOrCPU /t REG_DWORD /d 1 /f;
+	};
 	{
 		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" /v BypassNRO /t REG_DWORD /d 1 /f;
 	};
@@ -234,7 +437,37 @@ $scripts = @(
 		net.exe accounts /maxpwage:UNLIMITED;
 	};
 	{
+		Register-ScheduledTask -TaskName 'PauseWindowsUpdate' -Xml $( Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\PauseWindowsUpdate.xml' -Raw );
+	};
+	{
+		reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Notifications" /v DisableNotifications /t REG_DWORD /d 1 /f;
+	};
+	{
+		reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy" /v VerifiedAndReputablePolicyState /t REG_DWORD /d 0 /f;
+	};
+	{
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" /v SmartScreenEnabled /t REG_SZ /d "Off" /f;
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WTDS\Components" /v ServiceEnabled /t REG_DWORD /d 0 /f;
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WTDS\Components" /v NotifyMalicious /t REG_DWORD /d 0 /f;
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WTDS\Components" /v NotifyPasswordReuse /t REG_DWORD /d 0 /f;
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WTDS\Components" /v NotifyUnsafeApp /t REG_DWORD /d 0 /f;
+		reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender Security Center\Systray" /v HideSystray /t REG_DWORD /d 1 /f;
+	};
+	{
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 0 /f
+	};
+	{
 		reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+	};
+	{
+		netsh.exe advfirewall firewall set rule group="@FirewallAPI.dll,-28752" new enable=Yes;
+		reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f;
+	};
+	{
+		auditpol.exe /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable;
+	};
+	{
+		reg.exe add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f;
 	};
 	{
 		Set-ExecutionPolicy -Scope 'LocalMachine' -ExecutionPolicy 'RemoteSigned' -Force;
@@ -337,6 +570,12 @@ $scripts = @(
 		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ShowTaskViewButton /t REG_DWORD /d 0 /f;
 	};
 	{
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Edge\SmartScreenEnabled" /ve /t REG_DWORD /d 0 /f;
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Edge\SmartScreenPuaEnabled" /ve /t REG_DWORD /d 0 /f;
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\AppHost" /v EnableWebContentEvaluation /t REG_DWORD /d 0 /f;
+		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\AppHost" /v PreventOverride /t REG_DWORD /d 0 /f;
+	};
+	{
 		reg.exe add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v TaskbarAl /t REG_DWORD /d 0 /f;
 	};
 	{
@@ -376,6 +615,15 @@ $scripts = @(
 $scripts = @(
 	{
 		Set-ItemProperty -LiteralPath 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name 'AutoLogonCount' -Type 'DWord' -Force -Value 0;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-01.ps1' -Raw | Invoke-Expression;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-02.ps1' -Raw | Invoke-Expression;
+	};
+	{
+		Get-Content -LiteralPath 'C:\Windows\Setup\Scripts\unattend-03.ps1' -Raw | Invoke-Expression;
 	};
 );
 

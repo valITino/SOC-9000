@@ -45,7 +45,7 @@ variable "memory_mb" {
 source "vmware-iso" "win11" {
   vm_name                     = var.vm_name
   iso_url                     = var.iso_path
-  iso_checksum                = "sha256:55D5267BF5C6F329A17784C7B0B046A203EA7AD6A8E24C6B422881C33948FB4E"
+  iso_checksum                = "sha256:84777A4095C58112B1EA7F19AAB7F533AD89081B051ED129F8265BA9FD4B5140"
 
   guest_os_type        = "windows11-64"     # maps to guestOS = "windows11-64"
   firmware             = "efi-secure"              
@@ -55,7 +55,7 @@ source "vmware-iso" "win11" {
   # tools_upload_flavor  = "windows"
 
   vmx_data = {
-      "bios.bootorder"         = "cdrom,hdd"
+    # "bios.bootorder"         = "cdrom,hdd"
       "sata0.present"          = "true"
       "sata0:0.startConnected"  = "true"
     # "ethernet0.virtualDev"    = "e1000e"      # If you insist on e1000e like your manual VM:
@@ -67,7 +67,7 @@ source "vmware-iso" "win11" {
     # "sata1:0.startConnected"    = "true"
   }
 
-  headless               = false
+  headless               = true
   cpus                   = var.cpus
   memory                 = var.memory_mb
   disk_size              = var.disk_size_mb
@@ -78,34 +78,19 @@ source "vmware-iso" "win11" {
   communicator           = "winrm"
   winrm_username         = "labadmin"
   winrm_password         = var.admin_password
-  winrm_timeout          = "1h"
+  winrm_timeout          = "30m"
   winrm_insecure         = true
   winrm_use_ssl          = false
-  
-  # cd_label   = "AUTOUNATTEND"
-  # cd_content = {
-  # "autounattend.xml" = file("C:/Users/liamo/WebstormProjects/SOC-9000/packer/windows-victim/answer/autounattend.xml")
-  # }
 
-  # floppy_files = [
-    # "${path.root}/answer/Autounattend.xml",
-    # "${path.root}/scripts/setup-winrm.ps1",
-    # "${path.root}/scripts/disable-sleep.ps1",
-    # "${path.root}/scripts/install-vmware-tools.ps1"
-  # ]
 
-  shutdown_command       = "shutdown /s /t 5 /f /d"
+  # Graceful guest shutdown after provisioning
+  shutdown_command = "C:\\Windows\\System32\\shutdown.exe /s /t 0 /f /d p:2:4"
 }
 
 build {
   sources = ["source.vmware-iso.win11"]
 
-  # Install VMware Tools (optional but recommended)
-  # provisioner "powershell" {
-    # script = "${path.root}/scripts/install-vmware-tools.ps1"
-  # }
-
-  # provisioner "powershell" {
-    # inline = ["Write-Host 'Windows base image ready for SOC-9000'"]
-  # }
+  provisioner "powershell" {
+  inline = ["whoami", "Get-Service WinRM | fl"]
+  }
 }
