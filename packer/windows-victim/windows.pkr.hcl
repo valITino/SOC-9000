@@ -52,19 +52,13 @@ source "vmware-iso" "win11" {
   version              = 21                 # virtualHW.version
   cdrom_adapter_type   = "sata"              
   network_adapter_type = "vmxnet3"          # or vmxnet3; see note below
-  # tools_upload_flavor  = "windows"
+
 
   vmx_data = {
-    # "bios.bootorder"         = "cdrom,hdd"
       "sata0.present"          = "true"
       "sata0:0.startConnected"  = "true"
     # "ethernet0.virtualDev"    = "e1000e"      # If you insist on e1000e like your manual VM:
       "managedVM.autoAddVTPM"   = "software"
-    # "uefi.secureboot.enabled" = "false"
-    # "floppy0.present"         = "false"
-    # "sata1.present"             = "true"
-    # "sata1:0.present"           = "true"
-    # "sata1:0.startConnected"    = "true"
   }
 
   headless               = true
