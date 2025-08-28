@@ -404,10 +404,33 @@ try {
     & $shell @buildArgs 2>&1 | Tee-Object -FilePath $ubuntuLog
 
     if ($LASTEXITCODE -ne 0) {
-        throw ('Ubuntu build failed. See {0}' -f $ubuntuLog)
-}
+    throw ('Ubuntu build failed. See {0}' -f $ubuntuLog)
+    }
 
     Write-Line 'Ubuntu build completed.' 'ok'
+
+    # NEW: Windows build section
+    Write-Banner 'Step 7 of 7 - Build Windows VM' 'Building Windows victim machine'
+
+    $windowsLog = Join-Path $PackerLogDir ('windows-{0}.log' -f (Get-Date).ToString('yyyyMMdd-HHmmss'))
+
+    $buildArgs = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', $buildScript,
+        '-Only', 'windows',
+        '-Headless',
+        '-Verbose'
+    )
+
+    Write-Line ("Starting Windows build in HEADLESS mode; logging to: {0}" -f $windowsLog) 'step'
+
+    & $shell @buildArgs 2>&1 | Tee-Object -FilePath $windowsLog
+
+    if ($LASTEXITCODE -ne 0) {
+        throw ('Windows build failed. See {0}' -f $windowsLog)
+    }
+
+    Write-Line 'Windows build completed.' 'ok'
 
     # Credential Summary
     $ubuntuUser = Get-UbuntuUsername -EnvMap $EnvMap -RepoRoot $RepoRoot

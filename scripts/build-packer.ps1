@@ -180,10 +180,25 @@ function New-LogFile([string]$name){
   Join-Path $LogDir ("{0}-{1}.log" -f $name,$stamp)
 }
 
-# Stable Packer cache
-$CacheDir = Join-Path $InstallRoot 'cache\packer'
+# OS-specific Packer cache
+$CacheDir = Join-Path $InstallRoot "cache\packer\$Only"
+if (-not $Only) { $CacheDir = Join-Path $InstallRoot "cache\packer\all" }
 New-Directory $CacheDir
 $env:PACKER_CACHE_DIR = $CacheDir
+
+# Temporary directory for packer
+$TmpDir = Join-Path $InstallRoot "tmp\packer"
+if (Test-Path $TmpDir) {
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+}
+New-Directory $TmpDir
+$env:PACKER_TMP_DIR = $TmpDir
+
+# Clean up any packer_cache directories in the source tree
+Write-Info "Cleaning up any packer_cache directories in the repo..."
+Get-ChildItem -Path $RepoRoot -Recurse -Depth 3 -Directory -Name 'packer_cache' | ForEach-Object {
+    Remove-Item -Recurse -Force (Join-Path $RepoRoot $_) -ErrorAction SilentlyContinue
+}
 
 # ssh-key provisioning dir
 $KeyDir  = Join-Path $InstallRoot 'keys'
@@ -395,20 +410,16 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
 
 # ---------- Windows build (optional) ----------
 if ($Only -eq 'windows' -or -not $Only) {
-  if (-not (Test-Path -LiteralPath $isoWindows)) { throw "Windows 11 ISO not found in $IsoRoot" }
-  $logW = New-LogFile 'windows'
-  Write-Info ("Windows build log: {0}" -f $logW)
-
-  $varsW = @{
-    iso_path   = $isoWindows
-    output_dir = $WindowsOut
-    headless   = 'true'
-  }
-  if ($HeadlessPref -ne $null) { $varsW['headless'] = ($(if($HeadlessPref){'true'}else{'false'})) }
-
-  Invoke-PackerInit     $Wtpl $logW
-  Invoke-PackerValidate $Wtpl $logW $varsW
-  Invoke-PackerBuild    $Wtpl $logW $varsW $WindowsMaxMinutes
+    if (-not (Test-Path -LiteralPath $isoWindows)) { 
+        throw "Windows 11 ISO not found in $IsoRoot" 
+    }
+    
+    # Add this line to define the log file for Windows build
+    $logW = New-LogFile 'windows'
+    
+    $windowsBuildScript = Join-Path $PSScriptRoot 'windows-build.ps1'
+    & $windowsBuildScript -IsoWindows $isoWindows -WindowsOut $WindowsOut -LogW $logW `
+                         -Wtpl $Wtpl -PackerExe $PackerExe -WindowsMaxMinutes $WindowsMaxMinutes
 }
 
 # ---------- Artifact gate + persist ----------
