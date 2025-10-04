@@ -4,6 +4,83 @@ Comprehensive version history and implementation details for the SOC-9000 lab au
 
 ---
 
+## Version 1.4.0 - Enhanced Uninstaller UX (2025-10-04)
+
+### Summary
+Completely rewrote the uninstaller with professional UI/UX, making it user-friendly, safe, and flexible.
+
+### Uninstaller Improvements
+✅ **Beautiful User Interface**
+- Unicode box-drawing characters for clean headers and sections
+- Color-coded status indicators (✓ success, ℹ info, ⊘ skip, ⚠ warning, ✗ error)
+- Professional formatting and progress messages
+- Clear visual hierarchy
+
+✅ **Interactive Mode**
+- Prompts for each component (Packer, Git, kubectl, TigerVNC, PowerShell 7, WSL, Lab Files)
+- Default "Yes" for safe removals, "No" for destructive actions
+- User can selectively choose what to uninstall
+- Clear warnings for destructive operations (WSL data loss, PowerShell 7 removal)
+
+✅ **Safety Features**
+- `-WhatIf` support for dry-run mode (preview changes without removing anything)
+- `-KeepUserData` flag to preserve Git configs, kubectl configs, etc.
+- Comprehensive logging to `%TEMP%\uninstall-soc9000-*.log`
+- Admin privilege check with helpful error message
+- Final summary before reboot
+
+✅ **Flexible Usage**
+```powershell
+.\uninstall-soc9000.ps1                    # Interactive - prompts for each component
+.\uninstall-soc9000.ps1 -All -Force        # Automated - remove everything
+.\uninstall-soc9000.ps1 -WhatIf            # Dry-run - preview changes
+.\uninstall-soc9000.ps1 -All -KeepUserData # Remove tools, keep configs
+```
+
+✅ **Better User Experience**
+- Clear component sections with visual separators
+- Success/failure feedback for each operation
+- Informative messages about what's being removed
+- Reboot prompt at the end (optional, not forced)
+- Professional error messages
+
+### Technical Details
+
+**Old Uninstaller Issues:**
+- Basic text output with minimal formatting
+- No user confirmation (all-or-nothing approach)
+- No dry-run mode
+- Forced reboot prompt
+- Unclear status messages
+
+**New Uninstaller Features:**
+- Component-based removers with clear separation
+- Confirm-Action helper function with default choices
+- Full `-WhatIf` / SupportsShouldProcess integration
+- Visual indicators using Unicode characters
+- Preserves user data by default (opt-in to remove)
+
+**Components Managed:**
+1. **Packer** - HashiCorp Packer and cache
+2. **Git** - Git + LFS + GitHub tools (optional: keep .gitconfig)
+3. **kubectl** - Kubernetes CLI (optional: keep .kube)
+4. **TigerVNC** - VNC viewer
+5. **PowerShell 7** - PowerShell 7.x (warning shown)
+6. **WSL** - Complete WSL removal (warning about data loss)
+7. **Lab Files** - E:/C:\SOC-9000-Install directories
+
+### Benefits
+✅ **User-friendly** - Clear prompts and status messages
+✅ **Safe** - Dry-run mode and selective removal
+✅ **Flexible** - Remove some components, keep others
+✅ **Professional** - Beautiful UI with Unicode characters
+✅ **Informative** - Detailed logging and progress indicators
+✅ **Respectful** - Preserves user data unless explicitly requested
+
+**Commit:** (Pending) - Enhanced uninstaller UX
+
+---
+
 ## Version 1.3.0 - Documentation Consolidation (2025-10-04)
 
 ### Summary
