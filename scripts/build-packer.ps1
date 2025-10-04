@@ -244,11 +244,18 @@ if (-not $isoUbuntu -or -not (Test-Path -LiteralPath $isoUbuntu)) {
   $u = Find-Iso $IsoRoot @('ubuntu-22.04*.iso','ubuntu-22.04*server*.iso')
   if ($u) { $isoUbuntu = $u.FullName; $isoUbuntuName = $u.Name }
 }
-$isoWindowsName = $envMap['ISO_WINDOWS']; $isoWindows = $null
-if ($isoWindowsName) { $isoWindows = Join-Path $IsoRoot $isoWindowsName }
+
+$isoWindowsName = $envMap['ISO_WINDOWS']
+$isoWindows = if ($isoWindowsName) { Join-Path $IsoRoot $isoWindowsName } else { $null }
+
 if (-not $isoWindows -or -not (Test-Path -LiteralPath $isoWindows)) {
-  $w = Find-Iso $IsoRoot @('Win*11*.iso','Windows*11*.iso','en-us_windows_11*.iso')
-  if ($w) { $isoWindows = $w.FullName; $isoWindowsName = $w.Name }
+    $w = Find-Iso $IsoRoot @('Win11_24H2_noprompt_autounattend_uefi.iso', '*noprompt_autounattend_uefi.iso', 'Win*11*.iso', 'Windows*11*.iso', 'en-us_windows_11*.iso')
+    if ($w) { 
+        $isoWindows = $w.FullName
+        $isoWindowsName = $w.Name
+    } else {
+        $isoWindows = $null
+    }
 }
 
 # Templates
@@ -380,8 +387,16 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
 
   try {
     # 1) inject public key into placeholder, normalize to LF, write back without BOM
-    $patchedUd = $origUd.Replace('__PUBKEY__', $pub) -replace "`r",""
+    $patchedUd = $origUd -replace '__PUBKEY__', $pub
+    $patchedUd = $patchedUd -replace "`r`n", "`n"  # Normalize to LF only
     [System.IO.File]::WriteAllText($udPath, $patchedUd, $utf8NoBom)
+
+    Write-Info "Public key injected into user-data: $($pub.Substring(0, 50))..."
+      if (Select-String -Path $udPath -Pattern $pub.Substring(0, 20)) {
+        Write-Ok "Public key successfully placed in user-data"
+      } else {
+        Write-Warn "Public key may not have been injected correctly"
+      }
 
     # 2) write meta-data with fresh instance-id each run
     $iid = 'iid-containerhost-{0}' -f (Get-Date -Format 'yyyyMMdd-HHmmss')
@@ -409,17 +424,30 @@ if ($Only -eq 'ubuntu' -or -not $Only) {
 }
 
 # ---------- Windows build (optional) ----------
+# ---------- Windows build (optional) ----------
 if ($Only -eq 'windows' -or -not $Only) {
-    if (-not (Test-Path -LiteralPath $isoWindows)) { 
-        throw "Windows 11 ISO not found in $IsoRoot" 
+    if ($null -eq $isoWindows -or -not (Test-Path -LiteralPath $isoWindows)) {
+        throw "Windows 11 ISO not found in $IsoRoot. Please download and place a Windows 11 ISO in the ISO directory."
     }
-    
-    # Add this line to define the log file for Windows build
-    $logW = New-LogFile 'windows'
-    
-    $windowsBuildScript = Join-Path $PSScriptRoot 'windows-build.ps1'
-    & $windowsBuildScript -IsoWindows $isoWindows -WindowsOut $WindowsOut -LogW $logW `
-                         -Wtpl $Wtpl -PackerExe $PackerExe -WindowsMaxMinutes $WindowsMaxMinutes
+    else {
+        # Windows build code goes here
+        $logW = New-LogFile 'windows'
+        
+        # Use the updated checksum from environment if available
+        if ($env:ISO_CHECKSUM) {
+            Write-Info "Using updated ISO checksum from environment: $env:ISO_CHECKSUM"
+            $checksum = $env:ISO_CHECKSUM
+        } else {
+            # Fallback to calculating checksum
+            Write-Info "Calculating checksum for Windows ISO..."
+            $checksum = "sha256:$((Get-FileHash -Path $isoWindows -Algorithm SHA256).Hash)"
+        }
+        
+        $windowsBuildScript = Join-Path $PSScriptRoot 'windows-build.ps1'
+        & $windowsBuildScript -IsoWindows $isoWindows -WindowsOut $WindowsOut -LogW $logW `
+                             -Wtpl $Wtpl -PackerExe $PackerExe -WindowsMaxMinutes $WindowsMaxMinutes `
+                             -IsoChecksum $checksum
+    }
 }
 
 # ---------- Artifact gate + persist ----------

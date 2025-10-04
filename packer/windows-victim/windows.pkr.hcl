@@ -42,10 +42,15 @@ variable "memory_mb" {
   default = 8192
 }
 
+variable "iso_checksum" {
+  type    = string
+  default = "sha256:E03C7A8921211D010DB1169853CB267C3EAB2B0B06DE7014D7A1D74CB3DDF37A"
+}
+
 source "vmware-iso" "win11" {
   vm_name                     = var.vm_name
   iso_url                     = var.iso_path
-  iso_checksum                = "sha256:84777A4095C58112B1EA7F19AAB7F533AD89081B051ED129F8265BA9FD4B5140"
+  iso_checksum                = var.iso_checksum
 
   guest_os_type        = "windows11-64"     # maps to guestOS = "windows11-64"
   firmware             = "efi-secure"              
@@ -88,3 +93,5 @@ build {
   inline = ["whoami", "Get-Service WinRM | fl"]
   }
 }
+
+

@@ -779,6 +779,40 @@ function Check-EDrive {
     }
 }
 
+# -------------------- Ensure: Windows ADK --------------------
+function Ensure-WindowsADK {
+    Write-Info "Checking Windows Assessment and Deployment Kit (ADK)..."
+    
+    # Check if oscdimg is available (main component we need)
+    $oscdimg = 'C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe'
+    
+    if (Test-Path $oscdimg) {
+        Write-Ok "Windows ADK found: $oscdimg"
+        return $true
+    }
+    
+    Write-Info "Windows ADK not found - attempting installation..."
+    
+    # Try to install via winget
+    if (Winget-Install -Id "Microsoft.WindowsADK" -Name "Windows Assessment and Deployment Kit") {
+        # Check again after installation
+        if (Test-Path $oscdimg) {
+            Write-Ok "Windows ADK installed successfully."
+            return $true
+        } else {
+            Write-Warn "Windows ADK installed but oscdimg.exe not found at expected location."
+            Write-Warn "Please install Windows ADK manually from:"
+            Write-Warn "https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install"
+            return $false
+        }
+    }
+    
+    Write-Err "Windows ADK installation failed."
+    Write-Warn "Please install Windows ADK manually from:"
+    Write-Warn "https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install"
+    return $false
+}
+
 # -------------------- MAIN --------------------
 try {
     Write-Host ""
@@ -848,6 +882,7 @@ try {
         Kubectl   = Ensure-Kubectl
         Git       = Ensure-Git
         TigerVNC  = Ensure-TigerVNC
+        WindowsADK = Ensure-WindowsADK
     }
 
     # Additional checks

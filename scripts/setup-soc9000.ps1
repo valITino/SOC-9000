@@ -294,15 +294,20 @@ try {
     $downloadScript = Join-Path $RepoRoot 'scripts\download-isos.ps1'
     & $shell -NoProfile -ExecutionPolicy Bypass -File $downloadScript -IsoDir $IsoRoot -Verbose
     
-    $isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
-    if (-not $isos -or $isos.Count -eq 0) {
-        Write-Line ('No ISO detected in {0}.' -f $IsoRoot) 'warn'
-        Read-Host '  [?] Place the required ISO(s) into the folder above, then press ENTER to re-check' | Out-Null
-        $isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
-        if (-not $isos -or $isos.Count -eq 0) { throw 'ISO(s) still missing; cannot continue.' }
+    $isos = @(Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue)
+    if ($isos.Count -eq 0) {
+      Write-Line ('No ISO detected in {0}.' -f $IsoRoot) 'warn'
+      Read-Host '  [?] Place the required ISO(s) into the folder above, then press ENTER to re-check' | Out-Null
+      $isos = @(Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue)
+      if ($isos.Count -eq 0) { throw 'ISO(s) still missing; cannot continue.' }
     }
     
     Write-Line ('{0} ISO(s) present.' -f $isos.Count) 'ok'
+
+    # Windows ISO Modification - This is now handled entirely by download-isos.ps1
+    # The download-isos.ps1 script automatically runs the modification when a Windows ISO is detected
+    Write-Banner 'Windows ISO Modification' 'Creating automated install ISO (handled by download-isos.ps1)'
+    Write-Line 'Windows ISO modification is handled automatically by the download script.' 'info'
     
     # Step 4: Networking
     Write-Banner 'Step 4 of 6 - VMware Networking' 'Verify first; configure only if needed.'

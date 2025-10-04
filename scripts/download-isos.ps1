@@ -19,9 +19,7 @@ function Write-Good($m){ Write-Host $m -ForegroundColor Green }
 function Write-Warn($m){ Write-Warning $m }
 function Write-Err ($m){ Write-Error   $m }
 
-# Global flag to track whether any manual downloads were required.  If set,
-# we'll prompt the user once at the end of the script instead of for each
-# individual file.
+# Global flag to track whether any manual downloads were required
 $script:manualFilesNeeded = $false
 
 # Load .env if present for ISO_DIR/URL overrides
@@ -40,10 +38,6 @@ New-Item -ItemType Directory -Path $IsoDir -Force | Out-Null
 # Defaults (can be overridden by params or .env)
 if (-not $UbuntuUrl)  { $UbuntuUrl  = 'https://releases.ubuntu.com/jammy/ubuntu-22.04.5-live-server-amd64.iso' }
 
-# pfSense, Windows 11 and Nessus require gated or expiring URLs.  We no longer
-# attempt automatic downloads for these files; instead the script immediately
-# opens the vendor page so the user can obtain the latest image manually.
-
 $AllowedIsoContentTypes = @(
   'application/x-iso9660-image','application/octet-stream',
   'application/download','binary/octet-stream','application/x-download'
@@ -61,7 +55,7 @@ function Invoke-Download {
             Write-Info "[*] Downloading $(Split-Path -Leaf $OutFile) (try $i/$MaxTries)..."
             Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $UA -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
 
-            # Best-effort content-type check using a lightweight HEAD request
+            # Best-effort content-type check
             try {
                 $head = Invoke-WebRequest -Method Head -Uri $Uri -Headers $UA -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
                 $ct = $head.Headers['Content-Type']
@@ -138,12 +132,12 @@ if ($pf) {
     Open-VendorPage -VendorPage 'https://www.pfsense.org/download/' -DisplayName 'pfSense ISO (Netgate account required; burner email OK)'
 }
 
-# Windows 11 ISO
-$win = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i).*win(dows)?[^\\w]*11.*\.iso$')
+# Windows 11 ISO - detect existing file or open vendor page
+$win = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)win.*11.*\.iso$', 'Win11.*\.iso')
 if ($win) {
     Write-Good "[=] Exists: $($win.Name)"
 } else {
-    Open-VendorPage -VendorPage 'https://www.microsoft.com/de-de/software-download/windows11' -DisplayName 'Windows 11 ISO'
+    Open-VendorPage -VendorPage 'https://www.microsoft.com/software-download/windows11' -DisplayName 'Windows 11 ISO'
 }
 
 # Nessus package
@@ -158,5 +152,38 @@ if ($nes) {
 if ($script:manualFilesNeeded) {
     Write-Host "Press Enter after you have downloaded and placed all required files to continue..." -ForegroundColor Yellow
     Read-Host | Out-Null
+    
+    # Re-check for Windows ISO after manual downloads
+    Write-Info "Re-checking for Windows ISO after manual downloads..."
+    $win = Find-FirstMatchingFile -Dir $IsoDir -Patterns @('(?i)win.*11.*\.iso$', 'Win11.*\.iso')
+    if ($win) {
+        Write-Good "[=] Windows ISO now available: $($win.Name)"
+    }
     $script:manualFilesNeeded = $false
+}
+
+# Auto-run Windows ISO modification if Windows ISO is present
+$winIso = Get-ChildItem -Path $IsoDir -Filter 'Win11*.iso' -ErrorAction SilentlyContinue | Select-Object -First 1
+# In download-isos.ps1, after the Windows ISO modification section:
+if ($winIso) {
+    Write-Info "Found Windows ISO: $($winIso.Name), attempting modification..."
+    
+    $modificationScript = Join-Path $rootDir 'scripts\full_iso-noprompt-autounattend.ps1'
+    if (Test-Path $modificationScript) {
+        # Capture the output to get the new checksum
+        $result = & $modificationScript
+        if ($LASTEXITCODE -eq 0) {
+            Write-Good "[+] Windows ISO modification completed successfully."
+            
+            # Update environment with new checksum if available
+            if ($result -match 'SHA256 Hash: (\w+)') {
+                $env:ISO_CHECKSUM = "sha256:$($matches[1])"
+                Write-Info "Updated ISO_CHECKSUM environment variable"
+            }
+        } else {
+            Write-Err "Windows ISO modification failed with exit code: $LASTEXITCODE"
+        }
+    } else {
+        Write-Err "Windows ISO modification script not found at: $modificationScript"
+    }
 }

@@ -5,6 +5,7 @@ param(
     [string]$LogW,
     [string]$Wtpl,
     [string]$PackerExe,
+    [string]$IsoChecksum,
     [int]$WindowsMaxMinutes = 120
 )
 
@@ -299,6 +300,7 @@ try {
     $varsW = @{
         iso_path   = $IsoWindows
         output_dir = $WindowsOut
+        iso_checksum = $IsoChecksum
     }
 
     Invoke-PackerInit     $Wtpl $LogW
