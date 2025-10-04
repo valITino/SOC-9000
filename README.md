@@ -69,7 +69,11 @@ Copy-Item .env.example .env  # Configure your paths
 - ✅ **Zero manual VM creation** - Everything via Packer
 - ✅ **Backwards compatibility** via `legacy/build-packer.ps1`
 
-See [MIGRATION.md](MIGRATION.md) for migration guide from older versions.
+## Documentation
+
+- **[docs/](docs/)** - Comprehensive guides (setup, deployment, operations)
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and implementation details
+- **[MIGRATION.md](MIGRATION.md)** - Migration guide from older versions
 
 ### Prerequisites
 
