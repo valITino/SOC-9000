@@ -1,2 +1,7 @@
-instance-id: iid-containerhost-20250906-095857
+# This file serves as a template for cloud-init NoCloud metadata
+# The build script (build-packer.ps1) dynamically generates the actual
+# meta-data file with a unique timestamp-based instance-id before each build
+#
+# Template values:
+instance-id: iid-containerhost-template
 local-hostname: containerhost

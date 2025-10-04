@@ -1,1 +1,9 @@
-SHA256(Win11_24H2_noprompt_autounattend_uefi.iso)= E03C7A8921211D010DB1169853CB267C3EAB2B0B06DE7014D7A1D74CB3DDF37A
+# This file stores the SHA256 checksum of the custom Windows ISO
+# The checksum is automatically generated during the ISO creation process
+# Format: SHA256(filename)= HASH_VALUE
+#
+# Note: This file should NOT be committed with a specific checksum value
+# as the ISO is generated uniquely on each system. Use this as a template.
+#
+# Example format:
+# SHA256(Win11_24H2_noprompt_autounattend_uefi.iso)= YOUR_CHECKSUM_HERE

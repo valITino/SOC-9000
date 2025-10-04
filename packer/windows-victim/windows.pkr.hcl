@@ -53,17 +53,19 @@ source "vmware-iso" "win11" {
   iso_checksum                = var.iso_checksum
 
   guest_os_type        = "windows11-64"     # maps to guestOS = "windows11-64"
-  firmware             = "efi-secure"              
-  version              = 21                 # virtualHW.version
-  cdrom_adapter_type   = "sata"              
-  network_adapter_type = "vmxnet3"          # or vmxnet3; see note below
-
+  firmware             = "efi-secure"       # UEFI Secure Boot for Windows 11
+  version              = 21                 # virtualHW.version (VMware HW compatibility)
+  cdrom_adapter_type   = "sata"             # SATA for CD-ROM
+  # Network adapter: vmxnet3 (default) offers best performance after VMware Tools installation
+  # Note: e1000e can be used if vmxnet3 causes driver issues during installation
+  network_adapter_type = "vmxnet3"
 
   vmx_data = {
-      "sata0.present"          = "true"
+      "sata0.present"           = "true"
       "sata0:0.startConnected"  = "true"
-    # "ethernet0.virtualDev"    = "e1000e"      # If you insist on e1000e like your manual VM:
-      "managedVM.autoAddVTPM"   = "software"
+      # Alternative network adapter if vmxnet3 causes issues:
+      # "ethernet0.virtualDev"  = "e1000e"
+      "managedVM.autoAddVTPM"   = "software"  # Add virtual TPM for Windows 11 requirement
   }
 
   headless               = true
@@ -93,5 +95,6 @@ build {
   inline = ["whoami", "Get-Service WinRM | fl"]
   }
 }
+
 
 

@@ -1,10 +1,11 @@
 ---
-- name: Add Wazuh GPG key
+- name: Download Wazuh GPG key
   become: yes
-  ansible.builtin.apt_key:
+  ansible.builtin.get_url:
     url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
-    state: present
-    keyring: /usr/share/keyrings/wazuh.gpg
+    dest: /usr/share/keyrings/wazuh.gpg
+    mode: '0644'
+    force: yes
 
 - name: Add Wazuh APT repo
   become: yes

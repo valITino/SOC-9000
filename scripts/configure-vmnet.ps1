@@ -151,7 +151,7 @@ Write-Host "=== Plan ===" -ForegroundColor Cyan
 for ($i=0; $i -lt $HostOnlyIds.Count; $i++) {
     Write-Host ("Host-only (vmnet{0}): {1}/24" -f $HostOnlyIds[$i], $HostOnlySubnets[$i])
 }
-Write-Host "Prune extras: $(if ($PrumeExtras) {'ENABLED'} else {'DISABLED'})"
+Write-Host "Prune extras: $(if ($PruneExtras) {'ENABLED'} else {'DISABLED'})"
 Write-Host ""
 
 if ($Preview) {

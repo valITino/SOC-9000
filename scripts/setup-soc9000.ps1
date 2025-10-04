@@ -220,7 +220,7 @@ try {
         ('Started       : {0}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
     )
     
-    Write-Banner 'SOC-9000 Setup Orchestrator' 'Steps 1-6 with clean, readable UX'
+    Write-Banner 'SOC-9000 Setup Orchestrator' 'Steps 1-7 with clean, readable UX'
     Write-Panel 'Session Overview' $overview
     
     # Step 1: Prerequisites
@@ -294,20 +294,15 @@ try {
     $downloadScript = Join-Path $RepoRoot 'scripts\download-isos.ps1'
     & $shell -NoProfile -ExecutionPolicy Bypass -File $downloadScript -IsoDir $IsoRoot -Verbose
     
-    $isos = @(Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue)
-    if ($isos.Count -eq 0) {
-      Write-Line ('No ISO detected in {0}.' -f $IsoRoot) 'warn'
-      Read-Host '  [?] Place the required ISO(s) into the folder above, then press ENTER to re-check' | Out-Null
-      $isos = @(Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue)
-      if ($isos.Count -eq 0) { throw 'ISO(s) still missing; cannot continue.' }
+    $isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
+    if (-not $isos -or $isos.Count -eq 0) {
+        Write-Line ('No ISO detected in {0}.' -f $IsoRoot) 'warn'
+        Read-Host '  [?] Place the required ISO(s) into the folder above, then press ENTER to re-check' | Out-Null
+        $isos = Get-ChildItem -Path $IsoRoot -Filter *.iso -ErrorAction SilentlyContinue
+        if (-not $isos -or $isos.Count -eq 0) { throw 'ISO(s) still missing; cannot continue.' }
     }
     
     Write-Line ('{0} ISO(s) present.' -f $isos.Count) 'ok'
-
-    # Windows ISO Modification - This is now handled entirely by download-isos.ps1
-    # The download-isos.ps1 script automatically runs the modification when a Windows ISO is detected
-    Write-Banner 'Windows ISO Modification' 'Creating automated install ISO (handled by download-isos.ps1)'
-    Write-Line 'Windows ISO modification is handled automatically by the download script.' 'info'
     
     # Step 4: Networking
     Write-Banner 'Step 4 of 6 - VMware Networking' 'Verify first; configure only if needed.'
@@ -382,9 +377,18 @@ try {
     
     $wslPrepareScript = Join-Path $RepoRoot 'scripts\wsl-prepare.ps1'
     $wslInitScript = Join-Path $RepoRoot 'scripts\wsl-init-user.ps1'
-    
+
+    Write-Line 'Preparing WSL environment...' 'info'
     & $shell -NoProfile -ExecutionPolicy Bypass -File $wslPrepareScript -Verbose
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL prepare script failed with exit code $LASTEXITCODE"
+    }
+
+    Write-Line 'Initializing WSL user configuration...' 'info'
     & $shell -NoProfile -ExecutionPolicy Bypass -File $wslInitScript -Verbose
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL init script failed with exit code $LASTEXITCODE"
+    }
     
     # Step 6: Build (Ubuntu first)
     Write-Banner 'Step 6 of 6 - Build Lab (Ubuntu First)' 'Using headless mode for reliable builds'
@@ -470,7 +474,7 @@ try {
 
     Read-Host '  [?] Press ENTER to finish' | Out-Null
 
-    Write-Banner 'Setup Steps 1-6 Complete' 'You can proceed to Step 7 (Windows) when ready.'
+    Write-Banner 'Setup Steps 1-7 Complete' 'Lab infrastructure is ready.'
     Write-Host 'NOTE: Credentials shown above also appear in this transcript log.' -ForegroundColor Yellow
 }
 catch {

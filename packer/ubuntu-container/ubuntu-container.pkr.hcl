@@ -44,11 +44,21 @@ default = 16384
 # Bind the HTTP seed server to the host IP on VMnet8 (passed by the build script)
 variable "vmnet8_host_ip" { type = string }
 
+# Optional ISO checksum for integrity validation
+# Ubuntu 22.04.5 LTS: sha256:9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0
+# Ubuntu 22.04.4 LTS: sha256:c396e956a9f52c418397867d1ea5c0cf1a99a49dcf648b086d2fb762330cc88d
+# Set to "none" to skip validation (not recommended for production)
+variable "iso_checksum" {
+  type    = string
+  default = "none"
+  # Recommended: default = "sha256:9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0"
+}
+
 # ---------- Builder ----------
 source "vmware-iso" "ubuntu2204" {
   vm_name                  = var.vm_name
   iso_url                  = var.iso_path
-  iso_checksum             = "none"                     # (optionally set a real sha256)
+  iso_checksum             = var.iso_checksum
 
   firmware                 = "bios"
   headless                 = true
