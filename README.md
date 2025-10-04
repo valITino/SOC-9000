@@ -6,7 +6,9 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
 - [Documentation](#documentation)
+- [Development](#development)
 - [Appendix A — pfSense install walk-through](#appendix-a--pfsense-install-walk-through-exact-screens--menus)
 - [Appendix B — 1-page printable quick-start](#appendix-b--1-page-printable-quick-start)
 
@@ -31,43 +33,136 @@ A pfSense-routed, k3s-managed SOC lab on VMware Workstation 17 Pro (Windows 11).
 
 ## Quick Start
 
-Run the setup script from a fresh clone to configure and verify VMware networking:
+### New Modular Architecture (v1.0.0+)
+
+The project now uses a **modular architecture** with reusable PowerShell modules and dedicated builder scripts:
 
 ```powershell
 git clone <repo-url> E:\SOC-9000\SOC-9000
 cd E:\SOC-9000\SOC-9000
-pwsh -File .\scripts\setup-soc9000.ps1 -Verbose
+Copy-Item .env.example .env  # Configure your paths
+
+# Build all VMs (interactive menu or CLI)
+.\setup-soc9000.ps1 -All -Verbose
+
+# Or build selectively
+.\setup-soc9000.ps1 -Ubuntu -Windows -Verbose
+
+# Or build individual VMs
+.\ubuntu-build.ps1 -Verbose
+.\windows-build.ps1 -Verbose
 ```
 
-Logs land in `./logs`. Re-run with `-SkipNetworking` or `-SkipVerify` if needed.
+**Available Commands:**
+- `.\setup-soc9000.ps1` - Main orchestrator (interactive menu or CLI parameters)
+- `.\ubuntu-build.ps1` - Build Ubuntu container host VM
+- `.\windows-build.ps1` - Build Windows 11 victim VM
+- `.\nessus-build.ps1` - Build Nessus VM (stub - manual setup required)
+- `.\pfsense-build.ps1` - Build pfSense VM (stub - manual setup required)
 
-### Clone and initialize
+**Key Features:**
+- ✅ Modular PowerShell modules (`modules/SOC9000.*.psm1`)
+- ✅ Centralized configuration (`config/soc9000.config.psd1`)
+- ✅ Individual builder scripts at repo root
+- ✅ Pester tests for all modules (`tests/`)
+- ✅ Backwards compatibility via `legacy/build-packer.ps1`
 
-If you are contributing to SOC‑9000 and wish to clone the repository directly, run:
+See [MIGRATION.md](MIGRATION.md) for migration guide from older versions.
 
+### Prerequisites
+
+Before building, ensure you have:
+- PowerShell 7.2+
+- VMware Workstation 17+
+- Packer
+- kubectl
+- Git
+- WSL2 with Ubuntu
+
+**Quick install:**
 ```powershell
-git clone <repo-url> E:\SOC-9000\SOC-9000
-cd E:\SOC-9000\SOC-9000
-Copy-Item .env.example .env
-pwsh -File .\scripts\lab-up.ps1    # end-to-end bring-up (VMs, k3s, apps, telemetry)
-pwsh -File .\scripts\lab-status.ps1
+.\scripts\setup\install-prereqs.ps1
 ```
 
-### Smoke test
+### Network Setup
 
-Validate that script paths resolve correctly without any network activity:
-
+Configure VMware virtual networks:
 ```powershell
-pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+.\scripts\setup\configure-vmnet.ps1
+.\scripts\utils\verify-networking.ps1
 ```
 
-### Networking
+### Full Lab Deployment
 
-Set up and validate VMware virtual networks:
-
+End-to-end bring-up (VMs, k3s, apps, telemetry):
 ```powershell
-pwsh -File .\scripts\configure-vmnet.ps1
-pwsh -File .\scripts\verify-networking.ps1
+.\scripts\utils\lab-up.ps1
+.\scripts\utils\lab-status.ps1
+```
+
+## Project Structure
+
+```
+SOC-9000/
+├── setup-soc9000.ps1           # Main orchestrator (interactive/CLI)
+├── ubuntu-build.ps1             # Ubuntu container host builder
+├── windows-build.ps1            # Windows 11 victim builder
+├── nessus-build.ps1             # Nessus VM builder (stub)
+├── pfsense-build.ps1            # pfSense VM builder (stub)
+├── build.ps1                    # Build helper (linting + tests)
+├── deploy.ps1                   # Deployment helper (validation + deploy)
+│
+├── modules/                     # PowerShell modules
+│   ├── SOC9000.Utils.psm1       # Logging, validation, paths
+│   ├── SOC9000.Utils.psd1       # Module manifest
+│   ├── SOC9000.Build.psm1       # Packer/VMware helpers
+│   ├── SOC9000.Build.psd1       # Module manifest
+│   ├── SOC9000.Platform.psm1    # OS checks, prereqs
+│   └── SOC9000.Platform.psd1    # Module manifest
+│
+├── config/                      # Configuration
+│   └── soc9000.config.psd1      # Centralized settings
+│
+├── scripts/                     # Organized scripts
+│   ├── setup/                   # Setup scripts
+│   │   ├── install-prereqs.ps1
+│   │   ├── download-isos.ps1
+│   │   ├── configure-vmnet.ps1
+│   │   ├── wsl-prepare.ps1
+│   │   └── ...
+│   ├── build/                   # Build scripts
+│   │   ├── nessus-vm-build-and-config.ps1
+│   │   ├── clean-packer-cache.ps1
+│   │   └── ...
+│   ├── deploy/                  # Deployment scripts
+│   │   ├── apply-k8s.ps1
+│   │   ├── wazuh-vendor-and-deploy.ps1
+│   │   ├── vmrun-lib.ps1
+│   │   └── ...
+│   └── utils/                   # Utility scripts
+│       ├── lab-up.ps1
+│       ├── lab-down.ps1
+│       ├── lab-status.ps1
+│       └── ...
+│
+├── tests/                       # Pester tests
+│   ├── SOC9000.Utils.Tests.ps1
+│   ├── SOC9000.Build.Tests.ps1
+│   ├── SOC9000.Platform.Tests.ps1
+│   └── ...
+│
+├── legacy/                      # Backwards compatibility
+│   └── build-packer.ps1         # Deprecation shim
+│
+├── packer/                      # Packer templates
+├── ansible/                     # Ansible playbooks
+├── k8s/                         # Kubernetes manifests
+│
+├── .gitignore                   # Comprehensive ignore rules
+├── PSScriptAnalyzerSettings.psd1 # Code quality settings
+├── README.md                    # This file
+├── MIGRATION.md                 # Migration guide
+└── REFACTORING-SUMMARY.md       # Refactoring documentation
 ```
 
 `configure-vmnet.ps1` creates or updates VMnet8 and VMnet20–23 with the correct subnets. `verify-networking.ps1` performs quick assertions and reports success when adapters, services, and hosts entries look good.
@@ -113,6 +208,51 @@ flowchart LR
   classDef svc fill:#eef,stroke:#66f
   CH -->|Ingress/TLS| WZ & TH & CX & CA & DV & KL
 ```
+
+## Development
+
+### Code Quality
+
+Run linting and tests before committing:
+```powershell
+.\build.ps1                # Run PSScriptAnalyzer + Pester tests
+.\build.ps1 -Fix           # Auto-fix PSScriptAnalyzer issues
+.\build.ps1 -SkipAnalyzer  # Run tests only
+```
+
+### Testing
+
+```powershell
+# Run all tests
+Invoke-Pester .\tests\
+
+# Run specific test suite
+Invoke-Pester .\tests\SOC9000.Utils.Tests.ps1 -Output Detailed
+
+# Run module tests only
+Invoke-Pester .\tests\SOC9000.*.Tests.ps1
+```
+
+### Module Development
+
+Modules are located in `modules/` with manifests (`.psd1`) and source (`.psm1`):
+- **SOC9000.Utils** - Logging, validation, paths, retries
+- **SOC9000.Build** - Packer/VMware build automation
+- **SOC9000.Platform** - OS detection, prerequisites, installers
+
+Import modules in your scripts:
+```powershell
+Import-Module (Join-Path $PSScriptRoot 'modules' 'SOC9000.Utils.psm1') -Force
+```
+
+### Configuration Priority
+
+Configuration is loaded in this order:
+1. Command-line parameters
+2. Environment variables
+3. `.env` file
+4. `config/soc9000.config.psd1`
+5. Hard-coded fallbacks
 
 ## Documentation
 

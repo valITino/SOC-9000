@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nRefactor and professionalize codebase: fix bugs, improve code quality, and enhance maintainability\n\n## Critical Fixes\n- Remove backup files from git tracking (German \"Kopie\" files)\n- Fix typo in configure-vmnet.ps1: $PrumeExtras → $PruneExtras\n- Fix regex typo in download-isos.ps1: remove extra backslash\n- Replace German error messages with English in build-packer.ps1\n\n## Major Improvements\n- Refactor full_iso-noprompt-autounattend.ps1:\n  * Remove all hardcoded paths and user-specific directories\n  * Add comprehensive parameter support with .env integration\n  * Add professional documentation header\n  * Improve error handling and progress output\n- Update deprecated Ansible apt_key module to modern get_url\n- Add ISO checksum validation support for Ubuntu Packer builds\n- Fix step numbering in setup-soc9000.ps1 (1-6 → 1-7)\n\n## Code Quality\n- Improve Kubernetes YAML formatting (standardize to multi-line)\n- Enhance Packer HCL comments and documentation\n- Convert meta-data and checksum.txt to templates\n- Add exit code validation for WSL scripts\n- Net change: +339 insertions, -441 deletions (cleaner codebase)\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(mkdir:*)",
+      "Bash(pwsh:*)",
+      "Bash(git config:*)"
     ],
     "deny": [],
     "ask": []

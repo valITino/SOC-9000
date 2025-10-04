@@ -1,19 +1,94 @@
-# env & secrets
+# ==================== SECRETS & CREDENTIALS ====================
 .env
 *.secret
 *.key
+*.pem
+*.pfx
+*.p12
+id_ed25519*
+id_rsa*
+credentials.json
+**/secrets/
 
-# build artifacts
+# ==================== BUILD ARTIFACTS ====================
 artifacts/
 temp/
+*.vmx
+*.vmdk
+*.nvram
+*.vmxf
+*.vmsd
+*.log
+packer_cache/
+output-*/
+*.box
+*.ova
+*.ovf
 
-# editors
+# ==================== INSTALL DIRECTORIES ====================
+E:/SOC-9000-Install/
+C:/SOC-9000-Install/
+**/SOC-9000-Install/
+state/
+cache/
+logs/
+VMs/
+
+# ==================== ISOs ====================
+*.iso
+isos/
+*.iso.checksum
+
+# ==================== POWERSHELL ====================
+*.ps1.bak
+*Kopie*.ps1
+*.swp
+*.swo
+*~
+
+# ==================== EDITORS & IDEs ====================
 .vscode/
 .idea/
+*.code-workspace
+.vs/
 
-# OS cruft
+# ==================== OS CRUFT ====================
 .DS_Store
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
- 
- 
+# ==================== CLOUD-INIT & SSH ====================
+meta-data
+user-data
+cidata.iso
+seed.iso
+*.ssh_host_*
+
+# ==================== PACKER TEMP FILES ====================
+packer-manifest.json
+packer-debug.log
+crash.log
+
+# ==================== WINDOWS ====================
+*.lnk
+*.tmp
+*.temp
+
+# ==================== NODE/NPM (if any) ====================
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ==================== PYTHON (if any) ====================
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+.venv/
+
+# ==================== TEST OUTPUTS ====================
+TestResults/
+*.trx
+testresults.xml

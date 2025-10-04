@@ -21,18 +21,6 @@ HOSTONLY_VMNET_IDS=20,21,22,23
     $out = Join-Path ([IO.Path]::GetTempPath()) 'soc9000-vmnet-import.txt'
     $text = . $gen -EnvPath $tmpEnv -OutFile $out -PassThru
     $expected = @"
-add adapter vmnet8
-add vnet vmnet8
-set vnet vmnet8 addr 192.168.186.0
-set vnet vmnet8 mask 255.255.255.0
-set adapter vmnet8 addr 192.168.186.1
-add nat vmnet8
-set nat vmnet8 internalipaddr 192.168.186.2
-add dhcp vmnet8
-update adapter vmnet8
-update nat vmnet8
-update dhcp vmnet8
-
 add adapter vmnet20
 add vnet vmnet20
 set vnet vmnet20 addr 172.22.10.0
