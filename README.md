@@ -57,15 +57,17 @@ Copy-Item .env.example .env  # Configure your paths
 - `.\setup-soc9000.ps1` - Main orchestrator (interactive menu or CLI parameters)
 - `.\ubuntu-build.ps1` - Build Ubuntu container host VM
 - `.\windows-build.ps1` - Build Windows 11 victim VM
-- `.\nessus-build.ps1` - Build Nessus VM (stub - manual setup required)
-- `.\pfsense-build.ps1` - Build pfSense VM (stub - manual setup required)
+- `.\nessus-build.ps1` - Build Nessus VM (fully automated)
+- `.\pfsense-build.ps1` - Build pfSense VM (fully automated)
 
 **Key Features:**
-- ✅ Modular PowerShell modules (`modules/SOC9000.*.psm1`)
-- ✅ Centralized configuration (`config/soc9000.config.psd1`)
-- ✅ Individual builder scripts at repo root
-- ✅ Pester tests for all modules (`tests/`)
-- ✅ Backwards compatibility via `legacy/build-packer.ps1`
+- ✅ **Fully automated VM builds** - Ubuntu, Windows, pfSense, Nessus
+- ✅ **Modular PowerShell modules** (`modules/SOC9000.*.psm1`)
+- ✅ **Centralized configuration** (`config/soc9000.config.psd1`)
+- ✅ **Individual builder scripts** at repo root
+- ✅ **Comprehensive tests** - 39 Pester tests (`tests/`)
+- ✅ **Zero manual VM creation** - Everything via Packer
+- ✅ **Backwards compatibility** via `legacy/build-packer.ps1`
 
 See [MIGRATION.md](MIGRATION.md) for migration guide from older versions.
 
@@ -107,8 +109,8 @@ SOC-9000/
 ├── setup-soc9000.ps1           # Main orchestrator (interactive/CLI)
 ├── ubuntu-build.ps1             # Ubuntu container host builder
 ├── windows-build.ps1            # Windows 11 victim builder
-├── nessus-build.ps1             # Nessus VM builder (stub)
-├── pfsense-build.ps1            # pfSense VM builder (stub)
+├── nessus-build.ps1             # Nessus VM builder (automated)
+├── pfsense-build.ps1            # pfSense VM builder (automated)
 ├── build.ps1                    # Build helper (linting + tests)
 ├── deploy.ps1                   # Deployment helper (validation + deploy)
 │

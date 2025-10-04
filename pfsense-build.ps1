@@ -75,25 +75,7 @@ $LogFile = Join-Path $LogDir "pfsense-$timestamp.log"
 
 Write-Banner -Title "SOC-9000 pfSense VM Builder" -Subtitle "Network Firewall" -Color Cyan
 
-# ==================== STUB IMPLEMENTATION ====================
-
-Write-WarnLog "pfSense VM builder is not yet implemented."
-Write-InfoLog "This is a stub implementation for future development."
-Write-InfoLog ""
-Write-InfoLog "To implement pfSense VM building:"
-Write-InfoLog "  1. Create a Packer template at: packer/pfsense/pfsense.pkr.hcl"
-Write-InfoLog "  2. Add pfSense ISO to: $IsoRoot"
-Write-InfoLog "  3. Configure automated installation (expect scripts or serial console)"
-Write-InfoLog "  4. Update this script to use the Packer template"
-Write-InfoLog ""
-Write-InfoLog "For now, you may need to manually:"
-Write-InfoLog "  - Download pfSense from https://www.pfsense.org/download/"
-Write-InfoLog "  - Install manually in VMware Workstation"
-Write-InfoLog "  - Configure WAN/LAN interfaces (VMnet8/VMnet2)"
-Write-InfoLog "  - Export VM to: $PfSenseOut"
-
-# TODO: Uncomment and implement when Packer template is ready
-<#
+# ==================== AUTOMATED PFSENSE BUILD ====================
 # ==================== PREREQUISITES ====================
 
 Write-InfoLog "Checking prerequisites..."
@@ -195,7 +177,3 @@ catch {
     Write-ErrorLog "Log file: $LogFile"
     exit 1
 }
-#>
-
-Write-WarnLog "pfSense VM builder stub - exiting with code 2 (not implemented)"
-exit 2

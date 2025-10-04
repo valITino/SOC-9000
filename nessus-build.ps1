@@ -75,25 +75,7 @@ $LogFile = Join-Path $LogDir "nessus-$timestamp.log"
 
 Write-Banner -Title "SOC-9000 Nessus VM Builder" -Subtitle "Vulnerability Scanner" -Color Cyan
 
-# ==================== STUB IMPLEMENTATION ====================
-
-Write-WarnLog "Nessus VM builder is not yet implemented."
-Write-InfoLog "This is a stub implementation for future development."
-Write-InfoLog ""
-Write-InfoLog "To implement Nessus VM building:"
-Write-InfoLog "  1. Create a Packer template at: packer/nessus/nessus.pkr.hcl"
-Write-InfoLog "  2. Add Nessus ISO to: $IsoRoot"
-Write-InfoLog "  3. Configure Nessus installation and licensing"
-Write-InfoLog "  4. Update this script to use the Packer template"
-Write-InfoLog ""
-Write-InfoLog "For now, you may need to manually:"
-Write-InfoLog "  - Download Nessus from Tenable"
-Write-InfoLog "  - Install on a Linux VM (Ubuntu/CentOS)"
-Write-InfoLog "  - Configure with activation code"
-Write-InfoLog "  - Export VM to: $NessusOut"
-
-# TODO: Uncomment and implement when Packer template is ready
-<#
+# ==================== AUTOMATED NESSUS BUILD ====================
 # ==================== PREREQUISITES ====================
 
 Write-InfoLog "Checking prerequisites..."
@@ -195,7 +177,3 @@ catch {
     Write-ErrorLog "Log file: $LogFile"
     exit 1
 }
-#>
-
-Write-WarnLog "Nessus VM builder stub - exiting with code 2 (not implemented)"
-exit 2

@@ -80,15 +80,17 @@ OS detection, prerequisites, and tool installation.
 - Artifact verification
 - State tracking
 
-#### **nessus-build.ps1** - Nessus VM Builder (Stub)
-- Placeholder implementation
-- Documentation for future development
-- Exit code 2 (not implemented)
+#### **nessus-build.ps1** - Nessus VM Builder (Automated)
+- Fully automated Nessus VM creation via Packer
+- Ubuntu-based with Nessus pre-installed
+- Configured with static IP on VMnet21 (SOC network)
+- Packer template: `packer/nessus-vm/nessus.pkr.hcl`
 
-#### **pfsense-build.ps1** - pfSense VM Builder (Stub)
-- Placeholder implementation
-- Manual setup guidance
-- Exit code 2 (not implemented)
+#### **pfsense-build.ps1** - pfSense VM Builder (Automated)
+- Fully automated pfSense VM creation via Packer
+- 5 NICs for WAN + 4 internal networks
+- Automated console configuration (interfaces, IPs, SSH)
+- Packer template: `packer/pfsense/pfsense.pkr.hcl`
 
 ### 3. Configuration (`config/`)
 
@@ -364,15 +366,16 @@ cd C:\path\to\SOC-9000
 
 ### Recommended Enhancements
 
-1. **Implement Nessus Builder**
-   - Create Packer template: `packer/nessus/nessus.pkr.hcl`
-   - Uncomment build logic in `nessus-build.ps1`
-   - Add automated Nessus installation and licensing
+1. **~~Implement Nessus Builder~~** ✅ COMPLETED
+   - ✅ Packer template created: `packer/nessus-vm/nessus.pkr.hcl`
+   - ✅ Build logic enabled in `nessus-build.ps1`
+   - ✅ Automated Ubuntu-based Nessus VM
 
-2. **Implement pfSense Builder**
-   - Create Packer template: `packer/pfsense/pfsense.pkr.hcl`
-   - Add automated installation via serial console
-   - Uncomment build logic in `pfsense-build.ps1`
+2. **~~Implement pfSense Builder~~** ✅ COMPLETED
+   - ✅ Packer template created: `packer/pfsense/pfsense.pkr.hcl`
+   - ✅ Automated installation via serial console boot commands
+   - ✅ Build logic enabled in `pfsense-build.ps1`
+   - ✅ 5 NICs configured automatically
 
 3. **Enhanced Logging**
    - Add structured logging (JSON format)
