@@ -98,8 +98,11 @@ if ($PSVersionTable.PSVersion.Major -lt 7 -and -not $SkipPowerShellUpgrade) {
 
     # Run prerequisite installation script
     try {
-        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PrereqScript"
-        $prereqExitCode = $LASTEXITCODE
+        # Use Start-Process to avoid parameter inheritance issues
+        $process = Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PrereqScript`"") `
+            -Wait -PassThru -NoNewWindow
+        $prereqExitCode = $process.ExitCode
 
         if ($prereqExitCode -ne 0) {
             Write-Host ""
