@@ -98,7 +98,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7 -and -not $SkipPowerShellUpgrade) {
 
     # Run prerequisite installation script
     try {
-        & $PrereqScript
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PrereqScript"
         $prereqExitCode = $LASTEXITCODE
 
         if ($prereqExitCode -ne 0) {
