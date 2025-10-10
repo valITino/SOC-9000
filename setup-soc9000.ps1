@@ -6,6 +6,9 @@
     Main orchestrator script for building SOC-9000 Lab VMs.
     Supports interactive menu or CLI parameter-driven execution.
 
+    This script starts in PowerShell 5.1, installs PowerShell 7 as a prerequisite,
+    then re-executes itself in PowerShell 7 to continue with the setup.
+
 .PARAMETER All
     Build all VM images (Ubuntu, Windows, Nessus, pfSense).
 
@@ -47,11 +50,12 @@
     # Check prerequisites only
 
 .NOTES
-    Version: 1.0.0
-    Requires: PowerShell 7.2+, Packer, VMware Workstation
+    Version: 1.1.0
+    Requires: PowerShell 5.1+ (auto-upgrades to PowerShell 7)
+    Additional Requirements: Packer, VMware Workstation
 #>
 
-#requires -Version 7.2
+#requires -Version 5.1
 
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -62,11 +66,113 @@ param(
     [switch]$PfSense,
     [switch]$PrereqsOnly,
     [switch]$Force,
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [switch]$SkipPowerShellUpgrade  # Internal parameter to prevent infinite loops
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# ==================== POWERSHELL VERSION CHECK ====================
+
+# Check if running in PowerShell 7+
+if ($PSVersionTable.PSVersion.Major -lt 7 -and -not $SkipPowerShellUpgrade) {
+    Write-Host ""
+    Write-Host "================= PowerShell Version Check =================" -ForegroundColor Cyan
+    Write-Host "Current PowerShell version: $($PSVersionTable.PSVersion)" -ForegroundColor Yellow
+    Write-Host "PowerShell 7+ is required for SOC-9000 Lab Setup" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Installing prerequisites (including PowerShell 7)..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Resolve script directory
+    $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
+    $PrereqScript = Join-Path $ScriptDir 'scripts' 'setup' 'install-prereqs.ps1'
+
+    # Check if prerequisite script exists
+    if (-not (Test-Path -LiteralPath $PrereqScript)) {
+        Write-Host "ERROR: Prerequisite script not found at: $PrereqScript" -ForegroundColor Red
+        Write-Host "Please ensure the SOC-9000 repository is complete." -ForegroundColor Red
+        exit 1
+    }
+
+    # Run prerequisite installation script
+    try {
+        & $PrereqScript
+        $prereqExitCode = $LASTEXITCODE
+
+        if ($prereqExitCode -ne 0) {
+            Write-Host ""
+            Write-Host "ERROR: Prerequisite installation failed with exit code $prereqExitCode" -ForegroundColor Red
+            Write-Host "Please resolve the issues above and try again." -ForegroundColor Red
+            exit $prereqExitCode
+        }
+    }
+    catch {
+        Write-Host ""
+        Write-Host "ERROR: Failed to run prerequisite installation: $($_.Exception.Message)" -ForegroundColor Red
+        exit 1
+    }
+
+    # Find PowerShell 7
+    Write-Host ""
+    Write-Host "================= Switching to PowerShell 7 =================" -ForegroundColor Cyan
+
+    $pwshPath = $null
+    $pwshCandidates = @(
+        (Get-Command pwsh -ErrorAction SilentlyContinue).Path,
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\pwsh.exe'),
+        (Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'),
+        'C:\Program Files\PowerShell\7\pwsh.exe'
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    if ($pwshCandidates.Count -gt 0) {
+        $pwshPath = $pwshCandidates[0]
+    }
+
+    if (-not $pwshPath) {
+        Write-Host ""
+        Write-Host "ERROR: PowerShell 7 was installed but cannot be found." -ForegroundColor Red
+        Write-Host "Please restart your PowerShell session and run this script again." -ForegroundColor Yellow
+        Write-Host "Or manually run: pwsh -File `"$($MyInvocation.MyCommand.Path)`"" -ForegroundColor Yellow
+        exit 1
+    }
+
+    # Re-exec in PowerShell 7 with all original parameters
+    Write-Host "PowerShell 7 found at: $pwshPath" -ForegroundColor Green
+    Write-Host "Re-executing script in PowerShell 7..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Build parameter list for re-execution
+    $reexecArgs = @(
+        '-NoLogo'
+        '-File'
+        $MyInvocation.MyCommand.Path
+        '-SkipPowerShellUpgrade'  # Prevent infinite loop
+    )
+
+    # Add original parameters
+    if ($All) { $reexecArgs += '-All' }
+    if ($Ubuntu) { $reexecArgs += '-Ubuntu' }
+    if ($Windows) { $reexecArgs += '-Windows' }
+    if ($Nessus) { $reexecArgs += '-Nessus' }
+    if ($PfSense) { $reexecArgs += '-PfSense' }
+    if ($PrereqsOnly) { $reexecArgs += '-PrereqsOnly' }
+    if ($Force) { $reexecArgs += '-Force' }
+    if ($NonInteractive) { $reexecArgs += '-NonInteractive' }
+    if ($VerbosePreference -eq 'Continue') { $reexecArgs += '-Verbose' }
+
+    # Execute in PowerShell 7
+    & $pwshPath @reexecArgs
+    exit $LASTEXITCODE
+}
+
+# If we're here, we're running in PowerShell 7+
+if (-not $SkipPowerShellUpgrade) {
+    Write-Host ""
+    Write-Host "Running in PowerShell $($PSVersionTable.PSVersion)" -ForegroundColor Green
+    Write-Host ""
+}
 
 # ==================== MODULE IMPORTS ====================
 

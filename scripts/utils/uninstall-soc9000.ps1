@@ -44,7 +44,7 @@
     Requires: Administrator privileges
 #>
 
-#requires -Version 7.2
+#requires -Version 5.1
 
 [CmdletBinding(SupportsShouldProcess)]
 param(
