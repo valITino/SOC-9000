@@ -87,7 +87,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7 -and -not $SkipPowerShellUpgrade) {
 
     # Resolve script directory
     $ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
-    $PrereqScript = Join-Path $ScriptDir 'scripts' 'setup' 'install-prereqs.ps1'
+    # PowerShell 5.1 compatible: Join-Path only accepts 2 arguments at a time
+    $PrereqScript = Join-Path (Join-Path (Join-Path $ScriptDir 'scripts') 'setup') 'install-prereqs.ps1'
 
     # Check if prerequisite script exists
     if (-not (Test-Path -LiteralPath $PrereqScript)) {
